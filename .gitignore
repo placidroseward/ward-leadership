@@ -9,3 +9,6 @@ dist/
 
 # Local database
 data/db.json
+
+# Vite cache
+.vite/
