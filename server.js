@@ -14,6 +14,14 @@ import { ALL_MEMBERS } from "./src/data/council.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// If volume is empty, seed from repo's default db.json
+const VOLUME_DB = join(__dirname, "data/db.json");
+const REPO_DB = join(__dirname, "data/db.default.json");
+if (existsSync(REPO_DB) && (!existsSync(VOLUME_DB) || JSON.parse(readFileSync(VOLUME_DB, "utf8")).councilMembers?.length === 0)) {
+  copyFileSync(REPO_DB, VOLUME_DB);
+  console.log("[INIT] Seeded db.json from default");
+}
+
 // Ensure data directory exists
 const dataDir = join(__dirname, "data");
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
