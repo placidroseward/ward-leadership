@@ -265,8 +265,41 @@ app.post("/api/goals/suggest", async (req, res) => {
   }
 });
 
+// ─── COUNCIL MEMBERS API ───────────────────────────────────────────────────────
+app.get("/api/members", (req, res) => {
+  const dbMembers = getAll("councilMembers");
+  if (dbMembers.length > 0) return res.json(dbMembers);
+  // Seed DB from static council.js on first run
+  for (const m of ALL_MEMBERS) {
+    insert("councilMembers", m);
+  }
+  res.json(ALL_MEMBERS);
+});
+
+app.post("/api/members", (req, res) => {
+  const { name, role, phone, orgKey, org, orgColor } = req.body;
+  if (!name || !orgKey) return res.status(400).json({ error: "name and orgKey required" });
+  const member = insert("councilMembers", {
+    id: randomUUID(),
+    name, role, phone, orgKey,
+    org: org || orgKey,
+    orgColor: orgColor || "#888",
+  });
+  res.json(member);
+});
+
+app.put("/api/members/:id", (req, res) => {
+  const updated = update("councilMembers", req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: "Not found" });
+  res.json(updated);
+});
+
+app.delete("/api/members/:id", (req, res) => {
+  remove("councilMembers", req.params.id);
+  res.json({ ok: true });
+});
+
 // ─── DASHBOARD META API ────────────────────────────────────────────────────────
-app.get("/api/members", (req, res) => res.json(ALL_MEMBERS));
 app.get("/api/week", (req, res) => res.json({ week: getWeekKey() }));
 app.get("/api/sent-pulses", (req, res) => res.json(getAll("sentPulses")));
 
