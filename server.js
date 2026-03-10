@@ -11,8 +11,15 @@ import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/s
 import { sendPulse, parsePulseResponse, sendSMS } from "./src/lib/twilio.js";
 import { generateAgenda, suggestGoals } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
+import { mkdirSync, existsSync, readFileSync, copyFileSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+
+
+// Ensure data directory exists
+const dataDir = join(__dirname, "data");
+if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
 // If volume is empty, seed from repo's default db.json
 const VOLUME_DB = join(__dirname, "data/db.json");
@@ -21,10 +28,6 @@ if (existsSync(REPO_DB) && (!existsSync(VOLUME_DB) || JSON.parse(readFileSync(VO
   copyFileSync(REPO_DB, VOLUME_DB);
   console.log("[INIT] Seeded db.json from default");
 }
-
-// Ensure data directory exists
-const dataDir = join(__dirname, "data");
-if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
 const app = express();
 app.use(cors());
