@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import cron from "node-cron";
 import { randomUUID } from "crypto";
-import { mkdirSync, existsSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, copyFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -11,7 +11,6 @@ import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/s
 import { sendPulse, parsePulseResponse, sendSMS } from "./src/lib/twilio.js";
 import { generateAgenda, suggestGoals } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
-import { mkdirSync, existsSync, readFileSync, copyFileSync } from "fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
