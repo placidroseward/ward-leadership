@@ -14,29 +14,23 @@ import { ALL_MEMBERS } from "./src/data/council.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-
-
 // Ensure data directory exists
 const dataDir = join(__dirname, "data");
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
-// Seed from db.default.json if councilMembers is empty
-const VOLUME_DB = join(__dirname, "data/db.json");
-const DEFAULT_DB_PATH = join(__dirname, "data/db.default.json");
+// Seed council members directly from council.js if DB is empty
 try {
-  if (existsSync(DEFAULT_DB_PATH)) {
-    const defaultData = JSON.parse(readFileSync(DEFAULT_DB_PATH, "utf8"));
-    if (existsSync(VOLUME_DB)) {
-      const current = JSON.parse(readFileSync(VOLUME_DB, "utf8"));
-      if (!current.councilMembers || current.councilMembers.length === 0) {
-        current.councilMembers = defaultData.councilMembers;
-        writeFileSync(VOLUME_DB, JSON.stringify(current, null, 2));
-        console.log("[INIT] Seeded council members from db.default.json");
-      }
-    } else {
-      writeFileSync(VOLUME_DB, JSON.stringify(defaultData, null, 2));
-      console.log("[INIT] Created db.json from db.default.json");
-    }
+  const dbPath = join(__dirname, "data/db.json");
+  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [] };
+  if (existsSync(dbPath)) {
+    db = JSON.parse(readFileSync(dbPath, "utf8"));
+  }
+  if (!db.councilMembers || db.councilMembers.length === 0) {
+    db.councilMembers = ALL_MEMBERS;
+    writeFileSync(dbPath, JSON.stringify(db, null, 2));
+    console.log(`[INIT] Seeded ${ALL_MEMBERS.length} council members from council.js`);
+  } else {
+    console.log(`[INIT] DB already has ${db.councilMembers.length} council members`);
   }
 } catch (err) {
   console.error("[INIT] Seeding error:", err.message);
