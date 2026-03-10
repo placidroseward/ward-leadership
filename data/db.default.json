@@ -1,0 +1,18 @@
+{
+  "pulseResponses": [],
+  "agendas": [],
+  "goals": [],
+  "sentPulses": [],
+  "councilMembers": [
+    {"id":"bishop","name":"Banks","role":"Bishop","phone":"+18014557980","orgKey":"bishopric","org":"Bishopric","orgColor":"#C9A84C"},
+    {"id":"fc","name":"Dave Wells","role":"First Counselor","phone":"+18015187476","orgKey":"bishopric","org":"Bishopric","orgColor":"#C9A84C"},
+    {"id":"sc","name":"Jorge Mohor","role":"Second Counselor","phone":"+13852232900","orgKey":"bishopric","org":"Bishopric","orgColor":"#C9A84C"},
+    {"id":"rsp","name":"Kristen Schneyder","role":"Relief Society President","phone":"+18018597993","orgKey":"relief_society","org":"Relief Society","orgColor":"#7C9E87"},
+    {"id":"eqp","name":"Dave Matthews","role":"Elders Quorum President","phone":"+18018574588","orgKey":"elders_quorum","org":"Elders Quorum","orgColor":"#5B7FA6"},
+    {"id":"ywp","name":"Kristal James","role":"Young Women President","phone":"+18018425904","orgKey":"young_women","org":"Young Women","orgColor":"#A07CB5"},
+    {"id":"pp","name":"Monica Shaheen","role":"Primary President","phone":"+14356684011","orgKey":"primary","org":"Primary","orgColor":"#C97B5A"},
+    {"id":"ssp","name":"Gary Dustin","role":"Sunday School President","phone":"+13853491923","orgKey":"sunday_school","org":"Sunday School","orgColor":"#6B9E9E"},
+    {"id":"wml","name":"Mark Larsen","role":"Ward Mission Leader","phone":"+13852242809","orgKey":"ward_mission","org":"Ward Mission","orgColor":"#9E7B6B"},
+    {"id":"es","name":"Tyler Peterson","role":"Executive Secretary","phone":"+18013802475","orgKey":"exec_secretary","org":"Executive Secretary","orgColor":"#888888"}
+  ]
+}
