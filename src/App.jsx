@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import PulseManager from "./components/PulseManager.jsx";
 import AgendaBuilder from "./components/AgendaBuilder.jsx";
 import GoalsTracker from "./components/GoalsTracker.jsx";
+import CouncilManager from "./components/CouncilManager.jsx";
 
 const API = import.meta.env.VITE_API_URL || "";
 
@@ -9,6 +10,7 @@ const NAV = [
   { id: "pulse", label: "Weekly Pulse", icon: "◈" },
   { id: "agenda", label: "Agenda Builder", icon: "◉" },
   { id: "goals", label: "Goals & Collaboration", icon: "◎" },
+  { id: "council", label: "Council Members", icon: "◇" },
 ];
 
 export default function App() {
@@ -69,6 +71,7 @@ export default function App() {
           overflow: hidden;
         }
 
+        /* Header */
         .header {
           display: flex;
           align-items: center;
@@ -115,6 +118,7 @@ export default function App() {
           font-weight: 300;
         }
 
+        /* Nav */
         .nav {
           display: flex;
           gap: 2px;
@@ -143,49 +147,204 @@ export default function App() {
         }
 
         .nav-btn:hover { color: var(--text-dim); }
-        .nav-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+        .nav-btn.active {
+          color: var(--gold);
+          border-bottom-color: var(--gold);
+        }
+
         .nav-icon { font-size: 14px; }
 
-        .main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        /* Main */
+        .main {
+          flex: 1;
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+        }
 
-        .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
-        .panel-header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--surface2); }
-        .panel-title { font-family: var(--font-display); font-size: 16px; font-weight: 400; letter-spacing: 0.1em; color: var(--text); }
+        /* Shared component styles */
+        .panel {
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-lg);
+          overflow: hidden;
+        }
+
+        .panel-header {
+          padding: 14px 20px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: var(--surface2);
+        }
+
+        .panel-title {
+          font-family: var(--font-display);
+          font-size: 16px;
+          font-weight: 400;
+          letter-spacing: 0.1em;
+          color: var(--text);
+        }
+
         .panel-body { padding: 20px; }
 
-        .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: var(--radius); font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; transition: all 0.15s; border: 1px solid transparent; font-weight: 500; }
-        .btn-gold { background: var(--gold); color: #0C0D0F; border-color: var(--gold); }
-        .btn-gold:hover { filter: brightness(1.05); }
-        .btn-outline { background: transparent; color: var(--text-dim); border-color: var(--border2); }
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 16px;
+          border-radius: var(--radius);
+          font-family: var(--font-mono);
+          font-size: 11px;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          cursor: pointer;
+          transition: all 0.15s;
+          border: 1px solid transparent;
+          font-weight: 500;
+        }
+
+        .btn-gold {
+          background: var(--gold);
+          color: #0C0D0F;
+          border-color: var(--gold);
+        }
+        .btn-gold:hover { background: #D4B55C; filter: brightness(1.05); }
+
+        .btn-outline {
+          background: transparent;
+          color: var(--text-dim);
+          border-color: var(--border2);
+        }
         .btn-outline:hover { border-color: var(--gold-dim); color: var(--gold); }
-        .btn-ghost { background: transparent; color: var(--text-muted); border-color: transparent; }
+
+        .btn-ghost {
+          background: transparent;
+          color: var(--text-muted);
+          border-color: transparent;
+        }
         .btn-ghost:hover { color: var(--text-dim); background: var(--surface3); }
-        .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+
+        .btn-danger {
+          background: transparent;
+          color: var(--danger);
+          border-color: var(--danger);
+        }
         .btn-danger:hover { background: rgba(160,90,90,0.1); }
+
         .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        .badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 2px; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 500; }
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 8px;
+          border-radius: 2px;
+          font-size: 10px;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          font-weight: 500;
+        }
 
-        .input { background: var(--surface3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font-mono); font-size: 12px; padding: 8px 12px; outline: none; transition: border-color 0.15s; width: 100%; }
+        .input {
+          background: var(--surface3);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text);
+          font-family: var(--font-mono);
+          font-size: 12px;
+          padding: 8px 12px;
+          outline: none;
+          transition: border-color 0.15s;
+          width: 100%;
+        }
         .input:focus { border-color: var(--gold-dim); }
         .input::placeholder { color: var(--text-muted); }
+
         textarea.input { resize: vertical; min-height: 80px; }
-        select.input { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234A4F5C'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
 
-        .label { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 500; }
+        select.input {
+          cursor: pointer;
+          appearance: none;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%234A4F5C'/%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 10px center;
+          padding-right: 28px;
+        }
+
+        .label {
+          font-size: 10px;
+          letter-spacing: 0.15em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          display: block;
+          margin-bottom: 6px;
+          font-weight: 500;
+        }
+
         .field { margin-bottom: 16px; }
-        .divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 
-        .empty-state { text-align: center; padding: 48px 24px; color: var(--text-muted); }
-        .empty-state-icon { font-size: 32px; display: block; margin-bottom: 12px; opacity: 0.4; }
-        .empty-state-text { font-size: 12px; letter-spacing: 0.1em; }
+        .divider {
+          border: none;
+          border-top: 1px solid var(--border);
+          margin: 16px 0;
+        }
 
-        .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 2px; font-size: 10px; letter-spacing: 0.08em; margin-right: 4px; margin-bottom: 4px; border: 1px solid; opacity: 0.85; }
+        .empty-state {
+          text-align: center;
+          padding: 48px 24px;
+          color: var(--text-muted);
+        }
 
-        .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        .empty-state-icon {
+          font-size: 32px;
+          display: block;
+          margin-bottom: 12px;
+          opacity: 0.4;
+        }
+
+        .empty-state-text {
+          font-size: 12px;
+          letter-spacing: 0.1em;
+        }
+
+        .tag {
+          display: inline-flex;
+          align-items: center;
+          padding: 2px 8px;
+          border-radius: 2px;
+          font-size: 10px;
+          letter-spacing: 0.08em;
+          margin-right: 4px;
+          margin-bottom: 4px;
+          border: 1px solid;
+          opacity: 0.85;
+        }
+
+        .spinner {
+          display: inline-block;
+          width: 12px; height: 12px;
+          border: 2px solid transparent;
+          border-top-color: currentColor;
+          border-radius: 50%;
+          animation: spin 0.6s linear infinite;
+        }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface2); border: 1px solid var(--gold-dim); border-radius: var(--radius); padding: 12px 20px; font-size: 12px; color: var(--text); z-index: 1000; animation: slideIn 0.2s ease; }
+        .toast {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          background: var(--surface2);
+          border: 1px solid var(--gold-dim);
+          border-radius: var(--radius);
+          padding: 12px 20px;
+          font-size: 12px;
+          color: var(--text);
+          z-index: 1000;
+          animation: slideIn 0.2s ease;
+        }
         @keyframes slideIn { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
         .scroll { overflow-y: auto; }
@@ -206,7 +365,7 @@ export default function App() {
         <header className="header">
           <div>
             <span className="header-title">
-              Ward Council
+              Placid Rose Ward Council
               <span>Executive Dashboard</span>
             </span>
           </div>
@@ -230,6 +389,7 @@ export default function App() {
           {tab === "pulse" && <PulseManager api={API} week={week} />}
           {tab === "agenda" && <AgendaBuilder api={API} week={week} />}
           {tab === "goals" && <GoalsTracker api={API} />}
+          {tab === "council" && <CouncilManager api={API} />}
         </main>
       </div>
     </>

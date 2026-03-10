@@ -6,10 +6,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, "../../data/db.json");
 
 const DEFAULT_DB = {
-  pulseResponses: [],
-  agendas: [],
-  goals: [],
-  sentPulses: [],
+  pulseResponses: [],   // { id, memberId, memberName, org, week, q1, q2, q3, raw, receivedAt }
+  agendas: [],          // { id, week, items, generatedAt, editedAt, status }
+  goals: [],            // { id, title, description, orgs, status, progress, createdAt, updatedAt, notes[] }
+  sentPulses: [],       // { week, sentAt, memberIds[] }
+  councilMembers: [],   // { id, name, role, phone, orgKey, org, orgColor }
 };
 
 function readDB() {
@@ -63,6 +64,7 @@ export function upsert(collection, id, item) {
   return insert(collection, { id, ...item });
 }
 
+// Get the ISO week string for a date (e.g. "2024-W12")
 export function getWeekKey(date = new Date()) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));

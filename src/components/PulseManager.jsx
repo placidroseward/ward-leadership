@@ -76,13 +76,118 @@ function ResponseCard({ r, onDelete }) {
   );
 }
 
+function SendPulseModal({ members, onSend, onClose }) {
+  const [selected, setSelected] = useState(
+    members.filter(m => m.id !== "es").map(m => m.id)
+  );
+  const [sending, setSending] = useState(false);
+
+  const toggle = (id) => {
+    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  };
+
+  const handleSend = async () => {
+    setSending(true);
+    await onSend(selected);
+    setSending(false);
+    onClose();
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      zIndex: 500,
+    }}>
+      <div style={{
+        background: "var(--surface)",
+        border: "1px solid var(--gold-dim)",
+        borderRadius: "var(--radius-lg)",
+        padding: 24,
+        width: 420,
+        maxHeight: "80vh",
+        overflow: "auto",
+      }}>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--gold)", marginBottom: 4 }}>
+          Send Pulse
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 16 }}>
+          Select which members to send the weekly pulse to
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <button className="btn btn-ghost" style={{ fontSize: 10, padding: "4px 10px" }}
+            onClick={() => setSelected(members.filter(m => m.id !== "es").map(m => m.id))}>
+            Select All
+          </button>
+          <button className="btn btn-ghost" style={{ fontSize: 10, padding: "4px 10px" }}
+            onClick={() => setSelected([])}>
+            Select None
+          </button>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          {members.filter(m => m.id !== "es").map(m => {
+            const color = ORG_COLORS[m.org] || "#888";
+            const isSelected = selected.includes(m.id);
+            return (
+              <div
+                key={m.id}
+                onClick={() => toggle(m.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 12px", marginBottom: 6,
+                  background: isSelected ? "var(--surface3)" : "var(--surface2)",
+                  border: `1px solid ${isSelected ? color : "var(--border)"}`,
+                  borderRadius: "var(--radius)",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+              >
+                <div style={{
+                  width: 16, height: 16, borderRadius: 2,
+                  border: `2px solid ${isSelected ? color : "var(--border2)"}`,
+                  background: isSelected ? color : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0, transition: "all 0.15s",
+                }}>
+                  {isSelected && <span style={{ color: "#0C0D0F", fontSize: 10, fontWeight: 700 }}>✓</span>}
+                </div>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: color, flexShrink: 0 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 500 }}>{m.name}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{m.org}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-gold"
+            onClick={handleSend}
+            disabled={selected.length === 0 || sending}
+          >
+            {sending
+              ? <><span className="spinner" /> Sending...</>
+              : `Send to ${selected.length} member${selected.length !== 1 ? "s" : ""}`
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PulseManager({ api, week }) {
   const [responses, setResponses] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
   const [showManual, setShowManual] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
   const [manual, setManual] = useState({ memberId: "", q1: "", q2: "", q3: "" });
   const [selectedWeek, setSelectedWeek] = useState(week);
 
@@ -95,21 +200,28 @@ export default function PulseManager({ api, week }) {
       fetch(`${api}/api/pulse?week=${selectedWeek}`).then(r => r.json()),
       fetch(`${api}/api/members`).then(r => r.json()),
     ]).then(([pulses, mems]) => {
-      setResponses(pulses);
-      setMembers(mems);
+      setResponses(Array.isArray(pulses) ? pulses : []);
+      setMembers(Array.isArray(mems) ? mems : []);
+    }).catch(() => {
+      setResponses([]);
+      setMembers([]);
     }).finally(() => setLoading(false));
   }, [api, selectedWeek]);
 
   useEffect(() => { load(); }, [load]);
 
-  const sendPulse = async () => {
-    setSending(true);
+  const sendPulse = async (memberIds) => {
     try {
-      const res = await fetch(`${api}/api/pulse/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      const res = await fetch(`${api}/api/pulse/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberIds }),
+      });
       const data = await res.json();
-      setToast(`Pulse sent to ${data.sent} members`);
-    } catch { setToast("Error sending pulse"); }
-    setSending(false);
+      setToast(`Pulse sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}`);
+    } catch {
+      setToast("Error sending pulse");
+    }
   };
 
   const submitManual = async () => {
@@ -130,13 +242,20 @@ export default function PulseManager({ api, week }) {
     load();
   };
 
-  // Calculate who hasn't responded
   const respondedIds = new Set(responses.map(r => r.memberId));
   const missing = members.filter(m => !respondedIds.has(m.id) && m.id !== "es");
+  const selectableMembers = members.filter(m => m.id !== "es");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+      {showSendModal && (
+        <SendPulseModal
+          members={members}
+          onSend={sendPulse}
+          onClose={() => setShowSendModal(false)}
+        />
+      )}
 
       {/* Toolbar */}
       <div style={{
@@ -159,8 +278,8 @@ export default function PulseManager({ api, week }) {
         <button className="btn btn-outline" onClick={() => setShowManual(v => !v)}>
           + Manual Entry
         </button>
-        <button className="btn btn-gold" onClick={sendPulse} disabled={sending}>
-          {sending ? <><span className="spinner" /> Sending...</> : "◈ Send Pulse Now"}
+        <button className="btn btn-gold" onClick={() => setShowSendModal(true)}>
+          ◈ Send Pulse Now
         </button>
       </div>
 
@@ -202,12 +321,23 @@ export default function PulseManager({ api, week }) {
               </div>
               <div className="field">
                 <label className="label">Council Member</label>
-                <select className="input" value={manual.memberId} onChange={e => setManual(m => ({ ...m, memberId: e.target.value }))}>
-                  <option value="">Select member...</option>
-                  {members.filter(m => m.id !== "es").map(m => (
-                    <option key={m.id} value={m.id}>{m.name} — {m.org}</option>
+                <select
+                  className="input"
+                  value={manual.memberId}
+                  onChange={e => setManual(m => ({ ...m, memberId: e.target.value }))}
+                >
+                  <option value="">— Select a member —</option>
+                  {selectableMembers.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} — {m.org}
+                    </option>
                   ))}
                 </select>
+                {selectableMembers.length === 0 && (
+                  <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 4 }}>
+                    No members found. Add members in the Council Members tab first.
+                  </div>
+                )}
               </div>
               <div className="field">
                 <label className="label">Members needing help?</label>
@@ -233,7 +363,6 @@ export default function PulseManager({ api, week }) {
         <div className="scroll" style={{ padding: 24, background: "var(--surface)" }}>
           <div style={{ marginBottom: 16, fontFamily: "var(--font-display)", fontSize: 18 }}>Response Status</div>
 
-          {/* Responded */}
           <div className="label" style={{ marginBottom: 8 }}>Responded ({responses.length})</div>
           {responses.length === 0 && <p style={{ color: "var(--text-muted)", fontSize: 11, marginBottom: 16 }}>None yet</p>}
           {responses.map(r => (
@@ -250,9 +379,10 @@ export default function PulseManager({ api, week }) {
 
           <hr className="divider" />
 
-          {/* Missing */}
           <div className="label" style={{ marginBottom: 8 }}>Awaiting ({missing.length})</div>
-          {missing.length === 0 && <p style={{ color: "var(--success)", fontSize: 11 }}>Everyone responded! 🎉</p>}
+          {missing.length === 0 && members.length > 1 && (
+            <p style={{ color: "var(--success)", fontSize: 11 }}>Everyone responded! 🎉</p>
+          )}
           {missing.map(m => (
             <div key={m.id} style={{
               display: "flex", alignItems: "center", gap: 8, marginBottom: 6, padding: "6px 10px",
@@ -266,7 +396,6 @@ export default function PulseManager({ api, week }) {
             </div>
           ))}
 
-          {/* Response rate */}
           {members.length > 1 && (
             <div style={{ marginTop: 20 }}>
               <div className="label">Response Rate</div>
