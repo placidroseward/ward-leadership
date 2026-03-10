@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import cron from "node-cron";
 import { randomUUID } from "crypto";
-import { mkdirSync, existsSync, readFileSync, copyFileSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, copyFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -20,12 +20,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = join(__dirname, "data");
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
-// If volume is empty, seed from repo's default db.json
+// Seed from db.default.json if councilMembers is empty
 const VOLUME_DB = join(__dirname, "data/db.json");
-const REPO_DB = join(__dirname, "data/db.default.json");
-if (existsSync(REPO_DB) && (!existsSync(VOLUME_DB) || JSON.parse(readFileSync(VOLUME_DB, "utf8")).councilMembers?.length === 0)) {
-  copyFileSync(REPO_DB, VOLUME_DB);
-  console.log("[INIT] Seeded db.json from default");
+const DEFAULT_DB_PATH = join(__dirname, "data/db.default.json");
+try {
+  if (existsSync(DEFAULT_DB_PATH)) {
+    const defaultData = JSON.parse(readFileSync(DEFAULT_DB_PATH, "utf8"));
+    if (existsSync(VOLUME_DB)) {
+      const current = JSON.parse(readFileSync(VOLUME_DB, "utf8"));
+      if (!current.councilMembers || current.councilMembers.length === 0) {
+        current.councilMembers = defaultData.councilMembers;
+        writeFileSync(VOLUME_DB, JSON.stringify(current, null, 2));
+        console.log("[INIT] Seeded council members from db.default.json");
+      }
+    } else {
+      writeFileSync(VOLUME_DB, JSON.stringify(defaultData, null, 2));
+      console.log("[INIT] Created db.json from db.default.json");
+    }
+  }
+} catch (err) {
+  console.error("[INIT] Seeding error:", err.message);
 }
 
 const app = express();
