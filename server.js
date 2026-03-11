@@ -244,6 +244,13 @@ app.put("/api/users/:id/password", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/users/:id/reset-password", requireAdmin, (req, res) => {
+  const user = getById("users", req.params.id);
+  if (!user) return res.status(404).json({ error: "Not found" });
+  update("users", user.id, { passwordHash: null });
+  res.json({ ok: true });
+});
+
 app.delete("/api/users/:id", requireAdmin, (req, res) => {
   remove("users", req.params.id);
   res.json({ ok: true });

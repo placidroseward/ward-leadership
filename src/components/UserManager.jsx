@@ -1,10 +1,138 @@
 import { useState, useEffect } from "react";
 
+function EditUserModal({ user, api, currentUser, onSave, onClose }) {
+  const [form, setForm] = useState({
+    firstName: user.firstName || "",
+    lastName: user.lastName || "",
+    email: user.email || "",
+    calling: user.calling || "",
+    phone: user.phone || "",
+    role: user.role || "user",
+  });
+  const [msg, setMsg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
+
+  const f = (key, val) => setForm(p => ({ ...p, [key]: val }));
+
+  const save = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`${api}/api/users/${user.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-user-id": currentUser.id },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      onSave();
+      onClose();
+    } catch (e) { setMsg("Error: " + e.message); }
+    setSaving(false);
+  };
+
+  const resetPassword = async () => {
+    if (!window.confirm(`Reset password for ${user.firstName}? They will set a new one on next login.`)) return;
+    setResetting(true);
+    try {
+      const res = await fetch(`${api}/api/users/${user.id}/reset-password`, {
+        method: "POST",
+        headers: { "x-user-id": currentUser.id },
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMsg("Password reset — user will set a new one on next login");
+    } catch (e) { setMsg("Error: " + e.message); }
+    setResetting(false);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 300,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <div style={{
+        background: "var(--surface)", border: "1px solid var(--border)",
+        borderRadius: "var(--radius-lg)", width: 460, maxHeight: "90vh",
+        overflow: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+      }}>
+        <div style={{
+          padding: "16px 24px", borderBottom: "1px solid var(--border)",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          background: "var(--surface2)",
+        }}>
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 17, color: "var(--text)" }}>
+            Edit — {user.firstName} {user.lastName}
+          </span>
+          <button className="btn btn-ghost" style={{ padding: "4px 10px" }} onClick={onClose}>✕</button>
+        </div>
+
+        <div style={{ padding: 24 }}>
+          <div className="two-col" style={{ marginBottom: 14 }}>
+            <div>
+              <label className="label">First Name</label>
+              <input className="input" value={form.firstName} onChange={e => f("firstName", e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Last Name</label>
+              <input className="input" value={form.lastName} onChange={e => f("lastName", e.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label className="label">Email Address</label>
+            <input className="input" type="email" value={form.email} onChange={e => f("email", e.target.value)} />
+          </div>
+          <div className="field">
+            <label className="label">Calling</label>
+            <input className="input" value={form.calling} onChange={e => f("calling", e.target.value)} placeholder="e.g. Relief Society President" />
+          </div>
+          <div className="two-col" style={{ marginBottom: 16 }}>
+            <div>
+              <label className="label">Phone</label>
+              <input className="input" value={form.phone} onChange={e => f("phone", e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Role</label>
+              <select className="input" value={form.role} onChange={e => f("role", e.target.value)}
+                disabled={user.id === currentUser.id}>
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+          </div>
+
+          {msg && (
+            <div style={{
+              fontSize: 11, marginBottom: 14,
+              color: msg.startsWith("Error") ? "var(--danger)" : "var(--success)"
+            }}>{msg}</div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
+            <button className="btn btn-ghost" style={{ fontSize: 10, color: "var(--text-muted)" }}
+              onClick={resetPassword} disabled={resetting}>
+              {resetting ? "Resetting..." : "↺ Reset Password"}
+            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+              <button className="btn btn-gold" onClick={save} disabled={saving}>
+                {saving ? <><span className="spinner" /> Saving...</> : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function UserManager({ api, currentUser }) {
   const [users, setUsers] = useState([]);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", calling: "", phone: "", role: "user" });
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [editingUser, setEditingUser] = useState(null);
 
   const load = () => {
     fetch(`${api}/api/users`, { headers: { "x-user-id": currentUser.id } })
@@ -32,16 +160,8 @@ export default function UserManager({ api, currentUser }) {
 
   const remove = async (id) => {
     if (id === currentUser.id) return setMsg("You cannot remove yourself");
+    if (!window.confirm("Remove this user? They will no longer be able to log in.")) return;
     await fetch(`${api}/api/users/${id}`, { method: "DELETE", headers: { "x-user-id": currentUser.id } });
-    load();
-  };
-
-  const toggleAdmin = async (u) => {
-    await fetch(`${api}/api/users/${u.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "x-user-id": currentUser.id },
-      body: JSON.stringify({ role: u.role === "admin" ? "user" : "admin" }),
-    });
     load();
   };
 
@@ -49,6 +169,13 @@ export default function UserManager({ api, currentUser }) {
 
   return (
     <div style={{ padding: 24, maxWidth: 700 }}>
+      {editingUser && (
+        <EditUserModal
+          user={editingUser} api={api} currentUser={currentUser}
+          onSave={load} onClose={() => setEditingUser(null)}
+        />
+      )}
+
       <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text)", marginBottom: 6 }}>User Management</div>
       <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 24 }}>
         Add users who can access this dashboard. They will set their own password on first login.
@@ -133,15 +260,15 @@ export default function UserManager({ api, currentUser }) {
             }}>
               {u.role || "user"}
             </span>
+            <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }}
+              onClick={() => setEditingUser(u)}>
+              ✎ Edit
+            </button>
             {u.id !== currentUser.id && (
-              <>
-                <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px" }} onClick={() => toggleAdmin(u)}>
-                  {u.role === "admin" ? "Demote" : "Make Admin"}
-                </button>
-                <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px", color: "var(--danger)" }} onClick={() => remove(u.id)}>
-                  Remove
-                </button>
-              </>
+              <button className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px", color: "var(--danger)" }}
+                onClick={() => remove(u.id)}>
+                Remove
+              </button>
             )}
           </div>
         </div>
