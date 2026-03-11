@@ -248,9 +248,30 @@ app.post("/api/agendas/generate", async (req, res) => {
   const week = req.body.week || getWeekKey();
   const pulseResponses = getAll("pulseResponses").filter((r) => r.week === week);
   const goals = getAll("goals");
+  const members = getMembers();
+
+  // Fetch minutes if a URL or text was provided
+  let minutesText = "";
+  const minutesEntries = getAll("minutes").filter(m => m.week === week);
+  if (minutesEntries.length > 0) {
+    const latest = minutesEntries[minutesEntries.length - 1];
+    if (latest.text) {
+      minutesText = latest.text;
+    } else if (latest.url) {
+      try {
+        const r = await fetch(latest.url);
+        minutesText = await r.text();
+        // Strip HTML tags if it came back as HTML
+        minutesText = minutesText.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
+      } catch (err) {
+        console.error("[MINUTES] Failed to fetch URL:", err.message);
+        minutesText = `[Minutes URL provided but could not be fetched: ${latest.url}]`;
+      }
+    }
+  }
 
   try {
-    const agenda = await generateAgenda({ pulseResponses, goals, weekKey: week });
+    const agenda = await generateAgenda({ pulseResponses, goals, weekKey: week, members, minutesText });
     const saved = insert("agendas", {
       id: randomUUID(),
       week,
@@ -376,6 +397,37 @@ app.put("/api/members/:id", (req, res) => {
 
 app.delete("/api/members/:id", (req, res) => {
   remove("councilMembers", req.params.id);
+  res.json({ ok: true });
+});
+
+// ─── MINUTES API ──────────────────────────────────────────────────────────────
+app.get("/api/minutes", (req, res) => {
+  const { week } = req.query;
+  const all = getAll("minutes");
+  res.json(week ? all.filter(m => m.week === week) : all);
+});
+
+app.post("/api/minutes", (req, res) => {
+  const { week, url, text } = req.body;
+  if (!week || (!url && !text)) return res.status(400).json({ error: "week and either url or text required" });
+  // Replace any existing entry for this week
+  const existing = getAll("minutes").find(m => m.week === week);
+  if (existing) {
+    const updated = update("minutes", existing.id, { url: url || null, text: text || null, updatedAt: new Date().toISOString() });
+    return res.json(updated);
+  }
+  const entry = insert("minutes", {
+    id: randomUUID(),
+    week,
+    url: url || null,
+    text: text || null,
+    addedAt: new Date().toISOString(),
+  });
+  res.json(entry);
+});
+
+app.delete("/api/minutes/:id", (req, res) => {
+  remove("minutes", req.params.id);
   res.json({ ok: true });
 });
 

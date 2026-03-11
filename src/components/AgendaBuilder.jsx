@@ -93,6 +93,11 @@ export default function AgendaBuilder({ api, week }) {
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [minutesUrl, setMinutesUrl] = useState("");
+  const [minutesText, setMinutesText] = useState("");
+  const [minutesMode, setMinutesMode] = useState("url"); // "url" or "text"
+  const [minutesSaved, setMinutesSaved] = useState(false);
+  const [savingMinutes, setSavingMinutes] = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
@@ -104,6 +109,36 @@ export default function AgendaBuilder({ api, week }) {
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Load existing minutes for this week
+  useEffect(() => {
+    fetch(`${api}/api/minutes?week=${week}`).then(r => r.json()).then(data => {
+      if (data.length > 0) {
+        const m = data[0];
+        if (m.url) { setMinutesMode("url"); setMinutesUrl(m.url); }
+        else if (m.text) { setMinutesMode("text"); setMinutesText(m.text); }
+        setMinutesSaved(true);
+      }
+    }).catch(() => {});
+  }, [api, week]);
+
+  const saveMinutes = async () => {
+    setSavingMinutes(true);
+    try {
+      await fetch(`${api}/api/minutes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          week,
+          url: minutesMode === "url" ? minutesUrl : null,
+          text: minutesMode === "text" ? minutesText : null,
+        }),
+      });
+      setMinutesSaved(true);
+      showToast("Minutes saved — will be included in next agenda generation");
+    } catch { showToast("Error saving minutes"); }
+    setSavingMinutes(false);
+  };
 
   const generate = async () => {
     setGenerating(true);
@@ -176,6 +211,50 @@ export default function AgendaBuilder({ api, week }) {
           </button>
         </div>
 
+        {/* Minutes panel */}
+        <div style={{
+          background: "var(--surface2)",
+          border: `1px solid ${minutesSaved ? "var(--gold-dim)" : "var(--border)"}`,
+          borderRadius: "var(--radius)",
+          padding: 12,
+          marginBottom: 16,
+        }}>
+          <div style={{ fontSize: 11, fontFamily: "var(--font-display)", color: minutesSaved ? "var(--gold)" : "var(--text)", marginBottom: 8 }}>
+            {minutesSaved ? "✓ Minutes Ready" : "📋 Previous Minutes"}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+            {["url", "text"].map(m => (
+              <button key={m} className="btn btn-ghost" style={{ fontSize: 10, padding: "3px 8px", background: minutesMode === m ? "var(--surface3)" : "transparent", color: minutesMode === m ? "var(--gold)" : "var(--text-muted)" }}
+                onClick={() => setMinutesMode(m)}>
+                {m === "url" ? "OneNote Link" : "Paste Text"}
+              </button>
+            ))}
+          </div>
+          {minutesMode === "url" ? (
+            <input
+              className="input"
+              style={{ fontSize: 11, marginBottom: 8 }}
+              placeholder="Paste OneNote share link..."
+              value={minutesUrl}
+              onChange={e => { setMinutesUrl(e.target.value); setMinutesSaved(false); }}
+            />
+          ) : (
+            <textarea
+              className="input"
+              style={{ fontSize: 11, marginBottom: 8, minHeight: 80, resize: "vertical" }}
+              placeholder="Paste minutes text here..."
+              value={minutesText}
+              onChange={e => { setMinutesText(e.target.value); setMinutesSaved(false); }}
+            />
+          )}
+          <button className="btn btn-outline" style={{ width: "100%", fontSize: 11 }} onClick={saveMinutes} disabled={savingMinutes || (!minutesUrl && !minutesText)}>
+            {savingMinutes ? "Saving..." : "Save Minutes"}
+          </button>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
+            Minutes will be reviewed by AI when generating the next agenda.
+          </div>
+        </div>
+
         <div className="label" style={{ marginBottom: 8 }}>Agendas</div>
         {agendas.length === 0 && (
           <div className="empty-state" style={{ padding: "24px 0" }}>
@@ -245,6 +324,34 @@ export default function AgendaBuilder({ api, week }) {
           </div>
 
           <div className="scroll" style={{ flex: 1, padding: 24 }}>
+            {/* Role Assignments */}
+            {selected.assignments && (
+              <div style={{
+                background: "var(--surface2)",
+                border: "1px solid var(--border2)",
+                borderRadius: "var(--radius-lg)",
+                padding: 16,
+                marginBottom: 20,
+                display: "flex",
+                gap: 24,
+                flexWrap: "wrap",
+              }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 16, color: "var(--text)", width: "100%", marginBottom: 4 }}>
+                  Meeting Assignments
+                </div>
+                {[
+                  { label: "Opening Prayer", value: selected.assignments.openingPrayer },
+                  { label: "Spiritual Thought", value: selected.assignments.spiritualThought },
+                  { label: "Closing Prayer", value: selected.assignments.closingPrayer },
+                ].map(a => (
+                  <div key={a.label} style={{ flex: 1, minWidth: 140 }}>
+                    <div className="label">{a.label}</div>
+                    <div style={{ fontSize: 13, color: "var(--gold)", fontFamily: "var(--font-display)", fontWeight: 500 }}>{a.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Cross-org themes */}
             {selected.crossOrgThemes?.length > 0 && (
               <div style={{
