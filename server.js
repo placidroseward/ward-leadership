@@ -85,6 +85,60 @@ app.get("/privacy", (req, res) => {
   `);
 });
 
+// ─── Terms and Conditions ──────────────────────────────────────────────────────
+app.get("/terms", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Terms and Conditions - Placid Rose Ward Council</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
+        h1 { color: #C9A84C; }
+      </style>
+    </head>
+    <body>
+      <h1>Terms and Conditions</h1>
+      <p><strong>Placid Rose Ward Council Communication System</strong></p>
+      <p><strong>Last updated: March 2026</strong></p>
+
+      <h2>Acceptance of Terms</h2>
+      <p>By providing your phone number and participating in this communication system, you agree to these terms. This system is for the exclusive use of volunteer leaders of the Placid Rose Ward of The Church of Jesus Christ of Latter-day Saints.</p>
+
+      <h2>Purpose of Service</h2>
+      <p>This service is used solely for internal ward council coordination, including weekly check-ins, meeting agenda preparation, and welfare efforts on behalf of ward members.</p>
+
+      <h2>Message Frequency</h2>
+      <p>Participants will receive approximately 1-2 automated SMS messages per week. Additional messages may be sent as needed for council coordination purposes.</p>
+
+      <h2>Message and Data Rates</h2>
+      <p>Message and data rates may apply depending on your mobile carrier and plan. This service does not charge participants for messages sent or received.</p>
+
+      <h2>Opt Out</h2>
+      <p>You may opt out of receiving messages at any time by replying STOP to any message or by contacting the Executive Secretary directly. After opting out you will receive one final confirmation message.</p>
+
+      <h2>Opt In</h2>
+      <p>To re-subscribe after opting out, reply START to any message from this service or contact the Executive Secretary directly.</p>
+
+      <h2>Help</h2>
+      <p>For help or questions about this service, reply HELP to any message or contact the Executive Secretary directly.</p>
+
+      <h2>Privacy</h2>
+      <p>Your privacy is important to us. Please review our <a href="/privacy">Privacy Policy</a> for details on how your information is handled.</p>
+
+      <h2>Limitation of Liability</h2>
+      <p>This service is provided as-is for internal church coordination purposes. We are not liable for any delays or failures in message delivery caused by mobile carriers or other third parties.</p>
+
+      <h2>Changes to Terms</h2>
+      <p>These terms may be updated at any time. Continued participation in the service constitutes acceptance of any updated terms.</p>
+
+      <h2>Contact</h2>
+      <p>For questions about these terms, contact the Ward Executive Secretary.</p>
+    </body>
+    </html>
+  `);
+});
+
 // ─── TWILIO WEBHOOK ───────────────────────────────────────────────────────────
 // Configure your Twilio number's inbound webhook to POST to: https://yourdomain.com/webhook/sms
 app.post("/webhook/sms", async (req, res) => {
