@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import cron from "node-cron";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -21,7 +21,7 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 // Seed council members directly from council.js if DB is empty
 try {
   const dbPath = join(__dirname, "data/db.json");
-  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [] };
+  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [], minutes: [], users: [] };
   if (existsSync(dbPath)) {
     db = JSON.parse(readFileSync(dbPath, "utf8"));
   }
@@ -126,6 +126,127 @@ app.get("/terms", (req, res) => {
     </body>
     </html>
   `);
+});
+
+// ─── AUTH HELPERS ─────────────────────────────────────────────────────────────
+function hashPassword(pw) {
+  return createHash("sha256").update(pw + "wc-salt-2026").digest("hex");
+}
+
+function safeUser(u) {
+  const { passwordHash, ...rest } = u;
+  return rest;
+}
+
+// Seed initial admin user (Executive Secretary) if no users exist
+try {
+  const existing = getAll("users");
+  if (existing.length === 0) {
+    insert("users", {
+      id: "admin-es",
+      firstName: "Tyler",
+      lastName: "Peterson",
+      email: "tyler@placidrose.org",
+      calling: "Executive Secretary",
+      phone: "+18013802475",
+      role: "admin",
+      passwordHash: null,
+      stayLoggedIn: false,
+      createdAt: new Date().toISOString(),
+    });
+    console.log("[INIT] Created initial admin user — update email in User Management");
+  }
+} catch (err) {
+  console.error("[INIT] User seeding error:", err.message);
+}
+
+// ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
+app.post("/api/auth/check", (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "Email required" });
+  const users = getAll("users");
+  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return res.status(404).json({ error: "No account found for that email. Contact the Executive Secretary to be added." });
+  res.json({
+    user: safeUser(user),
+    hasPassword: !!user.passwordHash,
+    stayLoggedIn: user.stayLoggedIn,
+  });
+});
+
+app.post("/api/auth/login", (req, res) => {
+  const { email, password, stayLoggedIn } = req.body;
+  const users = getAll("users");
+  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return res.status(404).json({ error: "Account not found" });
+  if (user.passwordHash !== hashPassword(password)) return res.status(401).json({ error: "Incorrect password" });
+  const updated = update("users", user.id, { stayLoggedIn: !!stayLoggedIn });
+  res.json({ user: safeUser(updated) });
+});
+
+app.post("/api/auth/set-password", (req, res) => {
+  const { email, password, stayLoggedIn } = req.body;
+  if (!password) return res.status(400).json({ error: "Password required" });
+  const users = getAll("users");
+  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user) return res.status(404).json({ error: "Account not found" });
+  if (user.passwordHash) return res.status(400).json({ error: "Password already set — use login" });
+  const updated = update("users", user.id, { passwordHash: hashPassword(password), stayLoggedIn: !!stayLoggedIn });
+  res.json({ user: safeUser(updated) });
+});
+
+// ─── USER MANAGEMENT API ──────────────────────────────────────────────────────
+function requireAdmin(req, res, next) {
+  const userId = req.headers["x-user-id"];
+  const users = getAll("users");
+  const user = users.find(u => u.id === userId);
+  if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
+  next();
+}
+
+app.get("/api/users", requireAdmin, (req, res) => {
+  res.json(getAll("users").map(safeUser));
+});
+
+app.post("/api/users", requireAdmin, (req, res) => {
+  const { firstName, lastName, email, calling, phone, role } = req.body;
+  if (!email || !firstName) return res.status(400).json({ error: "First name and email required" });
+  const existing = getAll("users").find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (existing) return res.status(409).json({ error: "A user with that email already exists" });
+  const user = insert("users", {
+    id: randomUUID(),
+    firstName, lastName: lastName || "", email: email.toLowerCase(),
+    calling: calling || "", phone: phone || "",
+    role: role === "admin" ? "admin" : "user",
+    passwordHash: null, stayLoggedIn: false,
+    createdAt: new Date().toISOString(),
+  });
+  res.json(safeUser(user));
+});
+
+app.put("/api/users/:id", (req, res) => {
+  const existing = getById("users", req.params.id);
+  if (!existing) return res.status(404).json({ error: "Not found" });
+  const { passwordHash, ...allowed } = req.body; // never allow direct hash update
+  const updated = update("users", req.params.id, allowed);
+  res.json(safeUser(updated));
+});
+
+app.put("/api/users/:id/password", (req, res) => {
+  const { current, next } = req.body;
+  const user = getById("users", req.params.id);
+  if (!user) return res.status(404).json({ error: "Not found" });
+  if (user.passwordHash && user.passwordHash !== hashPassword(current)) {
+    return res.status(401).json({ error: "Current password is incorrect" });
+  }
+  if (!next) return res.status(400).json({ error: "New password required" });
+  update("users", user.id, { passwordHash: hashPassword(next) });
+  res.json({ ok: true });
+});
+
+app.delete("/api/users/:id", requireAdmin, (req, res) => {
+  remove("users", req.params.id);
+  res.json({ ok: true });
 });
 
 // ─── TWILIO WEBHOOK ───────────────────────────────────────────────────────────
