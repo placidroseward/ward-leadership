@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import cron from "node-cron";
 import { randomUUID } from "crypto";
-import { mkdirSync, existsSync, readFileSync, copyFileSync, writeFileSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -36,6 +36,12 @@ try {
   console.error("[INIT] Seeding error:", err.message);
 }
 
+// Helper: get current members from DB, falling back to council.js
+function getMembers() {
+  const dbMembers = getAll("councilMembers");
+  return dbMembers.length > 0 ? dbMembers : ALL_MEMBERS;
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -62,22 +68,16 @@ app.get("/privacy", (req, res) => {
       <h1>Privacy Policy</h1>
       <p><strong>Placid Rose Ward Council Communication System</strong></p>
       <p><strong>Last updated: March 2026</strong></p>
-
       <h2>Overview</h2>
       <p>This application is a private internal communication tool used exclusively by volunteer leaders of the Placid Rose Ward of The Church of Jesus Christ of Latter-day Saints.</p>
-
       <h2>Information We Collect</h2>
       <p>We collect phone numbers and text message responses voluntarily provided by ward council members for the purpose of coordinating council meetings and welfare efforts.</p>
-
       <h2>How We Use Your Information</h2>
       <p>Phone numbers and responses are used solely for internal ward council coordination. Information is never sold, shared, or used for any commercial purpose.</p>
-
       <h2>Who Has Access</h2>
       <p>Only the Ward Executive Secretary and Bishopric have access to this system and its data.</p>
-
       <h2>Opt Out</h2>
       <p>Council members may opt out at any time by contacting the Executive Secretary directly.</p>
-
       <h2>Contact</h2>
       <p>For questions about this privacy policy, contact the Ward Executive Secretary.</p>
     </body>
@@ -101,37 +101,26 @@ app.get("/terms", (req, res) => {
       <h1>Terms and Conditions</h1>
       <p><strong>Placid Rose Ward Council Communication System</strong></p>
       <p><strong>Last updated: March 2026</strong></p>
-
       <h2>Acceptance of Terms</h2>
       <p>By providing your phone number and participating in this communication system, you agree to these terms. This system is for the exclusive use of volunteer leaders of the Placid Rose Ward of The Church of Jesus Christ of Latter-day Saints.</p>
-
       <h2>Purpose of Service</h2>
       <p>This service is used solely for internal ward council coordination, including weekly check-ins, meeting agenda preparation, and welfare efforts on behalf of ward members.</p>
-
       <h2>Message Frequency</h2>
       <p>Participants will receive approximately 1-2 automated SMS messages per week. Additional messages may be sent as needed for council coordination purposes.</p>
-
       <h2>Message and Data Rates</h2>
       <p>Message and data rates may apply depending on your mobile carrier and plan. This service does not charge participants for messages sent or received.</p>
-
       <h2>Opt Out</h2>
       <p>You may opt out of receiving messages at any time by replying STOP to any message or by contacting the Executive Secretary directly. After opting out you will receive one final confirmation message.</p>
-
       <h2>Opt In</h2>
       <p>To re-subscribe after opting out, reply START to any message from this service or contact the Executive Secretary directly.</p>
-
       <h2>Help</h2>
       <p>For help or questions about this service, reply HELP to any message or contact the Executive Secretary directly.</p>
-
       <h2>Privacy</h2>
       <p>Your privacy is important to us. Please review our <a href="/privacy">Privacy Policy</a> for details on how your information is handled.</p>
-
       <h2>Limitation of Liability</h2>
       <p>This service is provided as-is for internal church coordination purposes. We are not liable for any delays or failures in message delivery caused by mobile carriers or other third parties.</p>
-
       <h2>Changes to Terms</h2>
       <p>These terms may be updated at any time. Continued participation in the service constitutes acceptance of any updated terms.</p>
-
       <h2>Contact</h2>
       <p>For questions about these terms, contact the Ward Executive Secretary.</p>
     </body>
@@ -140,24 +129,20 @@ app.get("/terms", (req, res) => {
 });
 
 // ─── TWILIO WEBHOOK ───────────────────────────────────────────────────────────
-// Configure your Twilio number's inbound webhook to POST to: https://yourdomain.com/webhook/sms
 app.post("/webhook/sms", async (req, res) => {
   const { From, Body } = req.body;
   if (!From || !Body) return res.sendStatus(200);
 
-  // Find the member by phone number
-  const member = ALL_MEMBERS.find((m) => m.phone === From);
+  const memberList = getMembers();
+  const member = memberList.find((m) => m.phone === From);
   const week = getWeekKey();
-
   const parsed = parsePulseResponse(Body.trim());
 
-  // Check if they already have a response this week — if so, append
   const existing = getAll("pulseResponses").find(
     (r) => r.memberId === (member?.id || From) && r.week === week
   );
 
   if (existing) {
-    // Merge new info into existing response
     update("pulseResponses", existing.id, {
       q1: existing.q1 || parsed.q1,
       q2: existing.q2 || parsed.q2,
@@ -182,7 +167,6 @@ app.post("/webhook/sms", async (req, res) => {
     });
   }
 
-  // Auto-reply acknowledgment
   const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response><Message>Thanks! Your response has been recorded for this week's Ward Council. 🙏</Message></Response>`;
   res.type("text/xml").send(twiml);
@@ -197,11 +181,11 @@ app.get("/api/pulse", (req, res) => {
 });
 
 app.post("/api/pulse/send", async (req, res) => {
-  // Manually trigger sending pulse to all or specific members
-  const { memberIds } = req.body; // optional — if empty, send to all
+  const { memberIds } = req.body;
+  const memberList = getMembers();
   const targets = memberIds
-    ? ALL_MEMBERS.filter((m) => memberIds.includes(m.id))
-    : ALL_MEMBERS.filter((m) => m.id !== "es"); // exclude exec secretary
+    ? memberList.filter((m) => memberIds.includes(m.id))
+    : memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx"));
 
   const week = getWeekKey();
   const results = [];
@@ -211,18 +195,24 @@ app.post("/api/pulse/send", async (req, res) => {
       await sendPulse(member);
       results.push({ memberId: member.id, success: true });
     } catch (err) {
+      console.error(`[TWILIO ERROR] ${member.name}: ${err.message}`);
       results.push({ memberId: member.id, success: false, error: err.message });
     }
   }
 
-  insert("sentPulses", { id: randomUUID(), week, sentAt: new Date().toISOString(), memberIds: targets.map((m) => m.id) });
-  res.json({ sent: results.length, results });
+  insert("sentPulses", {
+    id: randomUUID(),
+    week,
+    sentAt: new Date().toISOString(),
+    memberIds: targets.map((m) => m.id),
+  });
+  res.json({ sent: results.filter(r => r.success).length, results });
 });
 
 app.post("/api/pulse/manual", (req, res) => {
-  // Manually add a pulse response (for members who texted you directly)
   const { memberId, q1, q2, q3, raw } = req.body;
-  const member = ALL_MEMBERS.find((m) => m.id === memberId);
+  const memberList = getMembers();
+  const member = memberList.find((m) => m.id === memberId);
   if (!member) return res.status(404).json({ error: "Member not found" });
 
   const week = getWeekKey();
@@ -288,19 +278,22 @@ app.post("/api/agendas/:id/send", async (req, res) => {
     .map((item) => `${item.order}. ${item.title} (${item.duration} min) — ${item.owner}`)
     .join("\n");
 
-  const targets = ALL_MEMBERS.filter((m) => m.id !== "es");
+  const memberList = getMembers();
+  const targets = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx"));
   const results = [];
+
   for (const member of targets) {
     try {
       await sendSMS(member.phone, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
       results.push({ memberId: member.id, success: true });
     } catch (err) {
+      console.error(`[TWILIO ERROR] ${member.name}: ${err.message}`);
       results.push({ memberId: member.id, success: false, error: err.message });
     }
   }
 
   update("agendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
-  res.json({ sent: results.length, results });
+  res.json({ sent: results.filter(r => r.success).length, results });
 });
 
 app.delete("/api/agendas/:id", (req, res) => {
@@ -360,13 +353,7 @@ app.post("/api/goals/suggest", async (req, res) => {
 
 // ─── COUNCIL MEMBERS API ───────────────────────────────────────────────────────
 app.get("/api/members", (req, res) => {
-  const dbMembers = getAll("councilMembers");
-  if (dbMembers.length > 0) return res.json(dbMembers);
-  // Seed DB from static council.js on first run
-  for (const m of ALL_MEMBERS) {
-    insert("councilMembers", m);
-  }
-  res.json(ALL_MEMBERS);
+  res.json(getMembers());
 });
 
 app.post("/api/members", (req, res) => {
@@ -399,7 +386,7 @@ app.get("/api/sent-pulses", (req, res) => res.json(getAll("sentPulses")));
 // ─── CRON: Send weekly pulse every Wednesday at 9am ───────────────────────────
 cron.schedule("0 9 * * 3", async () => {
   console.log("[CRON] Sending weekly pulse...");
-  const targets = ALL_MEMBERS.filter((m) => m.id !== "es");
+  const targets = getMembers().filter(m => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx"));
   for (const member of targets) {
     try {
       await sendPulse(member);
@@ -415,7 +402,7 @@ cron.schedule("0 9 * * 3", async () => {
     memberIds: targets.map((m) => m.id),
     auto: true,
   });
-}, { timezone: "America/Denver" }); // Change to your timezone
+}, { timezone: "America/Denver" });
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Ward Council server running on port ${PORT}`));
