@@ -46,6 +46,45 @@ if (process.env.NODE_ENV === "production") {
   app.use(express.static(join(__dirname, "dist")));
 }
 
+// ─── Privacy Policy ────────────────────────────────────────────────────────────
+app.get("/privacy", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Privacy Policy - Placid Rose Ward Council</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #333; }
+        h1 { color: #C9A84C; }
+      </style>
+    </head>
+    <body>
+      <h1>Privacy Policy</h1>
+      <p><strong>Placid Rose Ward Council Communication System</strong></p>
+      <p><strong>Last updated: March 2026</strong></p>
+
+      <h2>Overview</h2>
+      <p>This application is a private internal communication tool used exclusively by volunteer leaders of the Placid Rose Ward of The Church of Jesus Christ of Latter-day Saints.</p>
+
+      <h2>Information We Collect</h2>
+      <p>We collect phone numbers and text message responses voluntarily provided by ward council members for the purpose of coordinating council meetings and welfare efforts.</p>
+
+      <h2>How We Use Your Information</h2>
+      <p>Phone numbers and responses are used solely for internal ward council coordination. Information is never sold, shared, or used for any commercial purpose.</p>
+
+      <h2>Who Has Access</h2>
+      <p>Only the Ward Executive Secretary and Bishopric have access to this system and its data.</p>
+
+      <h2>Opt Out</h2>
+      <p>Council members may opt out at any time by contacting the Executive Secretary directly.</p>
+
+      <h2>Contact</h2>
+      <p>For questions about this privacy policy, contact the Ward Executive Secretary.</p>
+    </body>
+    </html>
+  `);
+});
+
 // ─── TWILIO WEBHOOK ───────────────────────────────────────────────────────────
 // Configure your Twilio number's inbound webhook to POST to: https://yourdomain.com/webhook/sms
 app.post("/webhook/sms", async (req, res) => {
