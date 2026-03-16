@@ -171,7 +171,62 @@ export async function summarizeMemberResponse(raw) {
   return response.content[0]?.text || raw;
 }
 
-export async function suggestGoals({ pulseResponses, existingGoals }) {
+export async function suggestMissionActions({ type, id, plan, pulseResponses = [], goals = [] }) {
+  // Find the item being asked about
+  let item = null;
+  let context = "";
+
+  if (type === "goal") {
+    item = (plan.goals || []).find(g => g.id === id);
+    context = `Key Goal: "${item?.title}" — ${item?.description}\nCurrent status: ${item?.status}\nExisting actions: ${(item?.actions || []).map(a => a.text).join(", ") || "none"}`;
+  } else if (type === "org") {
+    item = (plan.orgs || []).find(o => o.id === id);
+    context = `Organization: "${item?.name}"\nObjective: ${item?.objective}\nCurrent status: ${item?.status}\nExisting actions: ${(item?.actions || []).map(a => a.text).join(", ") || "none"}`;
+  }
+
+  if (!item) return [];
+
+  const recentPulse = pulseResponses.slice(-15).map(r =>
+    `${r.org}: "${r.q1 || ""} ${r.q2 || ""} ${r.q3 || ""}"`
+  ).join("\n");
+
+  const activeGoals = goals.filter(g => g.status !== "completed")
+    .map(g => g.title).join(", ") || "none";
+
+  const prompt = `You are helping a Ward Council Executive Secretary brainstorm action items for a Ward Mission Plan for a congregation of The Church of Jesus Christ of Latter-day Saints.
+
+## Item to improve:
+${context}
+
+## Overall mission plan primary goal:
+${plan.primaryGoal || "Bring members and non-members closer to Jesus Christ"}
+
+## Recent pulse responses from council members:
+${recentPulse || "No recent responses"}
+
+## Active collaborative goals:
+${activeGoals}
+
+## Task:
+Suggest 3-4 specific, actionable items that would help move this ${type === "goal" ? "goal" : "organization's plan"} forward. Each suggestion should be:
+- Concrete and doable within 1-4 weeks
+- Relevant to the LDS ward context
+- Different from the existing actions already listed
+- Informed by what council members have been reporting
+
+Return only a JSON array of strings, no other text:
+["suggestion 1", "suggestion 2", "suggestion 3"]`;
+
+  const response = await getClient().messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 600,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = response.content.map(b => b.text || "").join("");
+  const clean = text.replace(/```json|```/g, "").trim();
+  try { return JSON.parse(clean); } catch { return []; }
+}
   const responseSummary = pulseResponses.slice(-20).map((r) =>
     `${r.org}: Q1="${r.q1 || ""}" Q2="${r.q2 || ""}" Q3="${r.q3 || ""}"`
   ).join("\n");

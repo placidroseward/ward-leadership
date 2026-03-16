@@ -7,12 +7,15 @@ import UserProfile from "./components/UserProfile.jsx";
 import UserManager from "./components/UserManager.jsx";
 import Login from "./components/Login.jsx";
 
+import MissionPlan from "./components/MissionPlan.jsx";
+
 const API = import.meta.env.VITE_API_URL || "";
 
 const NAV = [
   { id: "pulse", label: "Weekly Pulse", icon: "◈" },
   { id: "agenda", label: "Agenda Builder", icon: "◉" },
   { id: "goals", label: "Goals & Collaboration", icon: "◎" },
+  { id: "mission", label: "Mission Plan", icon: "✦" },
   { id: "council", label: "Council Members", icon: "◇" },
 ];
 
@@ -161,6 +164,7 @@ export default function App() {
               {tab === "pulse" && <PulseManager api={API} week={week} />}
               {tab === "agenda" && <AgendaBuilder api={API} week={week} />}
               {tab === "goals" && <GoalsTracker api={API} />}
+              {tab === "mission" && <MissionPlan api={API} />}
               {tab === "council" && <CouncilManager api={API} />}
             </main>
           </>

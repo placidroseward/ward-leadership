@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
 import { sendPulse, parsePulseResponse, sendSMS } from "./src/lib/twilio.js";
-import { generateAgenda, suggestGoals } from "./src/lib/claude.js";
+import { generateAgenda, suggestGoals, suggestMissionActions } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,7 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 // Seed council members directly from council.js if DB is empty
 try {
   const dbPath = join(__dirname, "data/db.json");
-  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [], minutes: [], users: [] };
+  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [], minutes: [], users: [], missionPlan: [] };
   if (existsSync(dbPath)) {
     db = JSON.parse(readFileSync(dbPath, "utf8"));
   }
@@ -526,6 +526,32 @@ app.put("/api/members/:id", (req, res) => {
 app.delete("/api/members/:id", (req, res) => {
   remove("councilMembers", req.params.id);
   res.json({ ok: true });
+});
+
+// ─── MISSION PLAN API ─────────────────────────────────────────────────────────
+app.get("/api/mission-plan", (req, res) => {
+  const plans = getAll("missionPlan");
+  res.json(plans.length > 0 ? plans[0] : {});
+});
+
+app.put("/api/mission-plan", (req, res) => {
+  const plans = getAll("missionPlan");
+  if (plans.length > 0) {
+    const updated = update("missionPlan", plans[0].id, { ...req.body, updatedAt: new Date().toISOString() });
+    return res.json(updated);
+  }
+  const created = insert("missionPlan", { ...req.body, id: randomUUID(), createdAt: new Date().toISOString() });
+  res.json(created);
+});
+
+app.post("/api/mission-plan/suggest", async (req, res) => {
+  const { type, id, plan } = req.body;
+  try {
+    const suggestions = await suggestMissionActions({ type, id, plan, pulseResponses: getAll("pulseResponses"), goals: getAll("goals") });
+    res.json({ suggestions });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── MINUTES API ──────────────────────────────────────────────────────────────
