@@ -227,6 +227,8 @@ Return only a JSON array of strings, no other text:
   const clean = text.replace(/```json|```/g, "").trim();
   try { return JSON.parse(clean); } catch { return []; }
 }
+
+export async function suggestGoals({ pulseResponses, existingGoals }) {
   const responseSummary = pulseResponses.slice(-20).map((r) =>
     `${r.org}: Q1="${r.q1 || ""}" Q2="${r.q2 || ""}" Q3="${r.q3 || ""}"`
   ).join("\n");
