@@ -501,9 +501,16 @@ app.post("/api/agendas/:id/send", async (req, res) => {
   const agenda = getById("agendas", req.params.id);
   if (!agenda) return res.status(404).json({ error: "Not found" });
 
-  const text = agenda.items
-    .map((item) => `${item.order}. ${item.title} (${item.duration} min) — ${item.owner}`)
-    .join("\n");
+  const appUrl = process.env.APP_URL || "https://placid-rose-ward-leadership.up.railway.app";
+  const a = agenda.assignments || {};
+  const lines = [
+    `Ward Council ${agenda.week}`,
+    a.openingPrayer    ? `1. Opening Prayer - ${a.openingPrayer}`    : null,
+    a.spiritualThought ? `2. Spiritual Thought - ${a.spiritualThought}` : null,
+    a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
+    `Full agenda: ${appUrl}`,
+  ].filter(Boolean);
+  const shortMsg = lines.join("\n");
 
   const memberList = getMembers();
   const targets = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
@@ -513,7 +520,7 @@ app.post("/api/agendas/:id/send", async (req, res) => {
   for (const member of targets) {
     const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
-      await sendSMSChunked(gatewayEmail, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Ward Council Agenda");
+      await sendSMS(gatewayEmail, shortMsg, "Ward Council Agenda");
       results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
@@ -666,7 +673,16 @@ app.put("/api/bishopric/agendas/:id", (req, res) => {
 app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   const agenda = getById("bishopricAgendas", req.params.id);
   if (!agenda) return res.status(404).json({ error: "Not found" });
-  const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`).join("\n");
+  const appUrl = process.env.APP_URL || "https://placid-rose-ward-leadership.up.railway.app";
+  const a = agenda.assignments || {};
+  const lines = [
+    `Bishopric Mtg ${agenda.week}`,
+    a.openingPrayer    ? `1. Opening Prayer - ${a.openingPrayer}`    : null,
+    a.spiritualThought ? `2. Spiritual Thought - ${a.spiritualThought}` : null,
+    a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
+    `Full agenda: ${appUrl}`,
+  ].filter(Boolean);
+  const shortMsg = lines.join("\n");
   const allBishopric = getBishopricMembers();
   const targets = allBishopric.filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   const skipped = allBishopric.filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
@@ -674,7 +690,7 @@ app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   for (const member of targets) {
     const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
-      await sendSMSChunked(gatewayEmail, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Bishopric Meeting Agenda");
+      await sendSMS(gatewayEmail, shortMsg, "Bishopric Meeting Agenda");
       results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
@@ -975,12 +991,21 @@ cron.schedule("0 8 * * 6", async () => {
   const agendas = getAll("bishopricAgendas").filter(a => a.week === week && a.status === "draft");
   if (agendas.length === 0) { console.log("[CRON] No draft bishopric agenda for this week"); return; }
   const agenda = agendas[0];
-  const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min)`).join("\n");
+  const appUrl = process.env.APP_URL || "https://placid-rose-ward-leadership.up.railway.app";
+  const a = agenda.assignments || {};
+  const lines = [
+    `Bishopric Mtg ${agenda.week}`,
+    a.openingPrayer    ? `1. Opening Prayer - ${a.openingPrayer}`    : null,
+    a.spiritualThought ? `2. Spiritual Thought - ${a.spiritualThought}` : null,
+    a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
+    `Full agenda: ${appUrl}`,
+  ].filter(Boolean);
+  const shortMsg = lines.join("\n");
   const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   for (const member of targets) {
     try {
       const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
-      await sendSMSChunked(gatewayEmail, `📋 Bishopric Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Bishopric Meeting Agenda");
+      await sendSMS(gatewayEmail, shortMsg, "Bishopric Meeting Agenda");
     } catch (err) {
       console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
     }
