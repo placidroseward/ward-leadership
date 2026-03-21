@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
 import { sendPulse, parsePulseResponse, sendSMS } from "./src/lib/twilio.js";
-import { generateAgenda, suggestGoals, suggestMissionActions } from "./src/lib/claude.js";
+import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -21,7 +21,7 @@ if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 // Seed council members directly from council.js if DB is empty
 try {
   const dbPath = join(__dirname, "data/db.json");
-  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [], minutes: [], users: [], missionPlan: [] };
+  let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [], minutes: [], users: [], missionPlan: [], bishopricAgendas: [], bishopricPulse: [], bishopricNotes: [], bishopricInbox: [], bishopricGoals: [], calendarEvents: [] };
   if (existsSync(dbPath)) {
     db = JSON.parse(readFileSync(dbPath, "utf8"));
   }
@@ -265,38 +265,51 @@ app.post("/webhook/sms", async (req, res) => {
   const member = memberList.find((m) => m.phone === From);
   const week = getWeekKey();
   const parsed = parsePulseResponse(Body.trim());
+  const isBishopric = member && BISHOPRIC_IDS.includes(member.id);
 
+  // AI-powered routing for bishopric members
+  if (isBishopric) {
+    try {
+      const routingResult = await routeSMS({ body: Body.trim(), fromName: member.name, currentWeek: week });
+      if (routingResult.destination === "bishopric") {
+        insert("bishopricInbox", {
+          id: randomUUID(), body: Body.trim(), fromName: member.name, fromPhone: From,
+          targetWeek: routingResult.targetWeek || week, receivedAt: new Date().toISOString(), routed: false,
+        });
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've added that to the ${routingResult.targetWeek && routingResult.targetWeek !== week ? routingResult.targetWeek : "upcoming"} bishopric meeting agenda. 🙏</Message></Response>`;
+        return res.type("text/xml").send(twiml);
+      } else if (routingResult.destination === "wardcouncil") {
+        insert("bishopricInbox", {
+          id: randomUUID(), body: Body.trim(), fromName: member.name, fromPhone: From,
+          targetWeek: week, receivedAt: new Date().toISOString(), routed: false, suggestedTarget: "wardcouncil",
+        });
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've flagged that for the Ward Council agenda. 🙏</Message></Response>`;
+        return res.type("text/xml").send(twiml);
+      }
+    } catch (err) {
+      console.error("[ROUTING]", err.message);
+    }
+  }
+
+  // Standard Ward Council pulse response handling
   const existing = getAll("pulseResponses").find(
     (r) => r.memberId === (member?.id || From) && r.week === week
   );
 
   if (existing) {
     update("pulseResponses", existing.id, {
-      q1: existing.q1 || parsed.q1,
-      q2: existing.q2 || parsed.q2,
-      q3: existing.q3 || parsed.q3,
-      raw: existing.raw + "\n---\n" + Body.trim(),
-      updatedAt: new Date().toISOString(),
+      q1: existing.q1 || parsed.q1, q2: existing.q2 || parsed.q2, q3: existing.q3 || parsed.q3,
+      raw: existing.raw + "\n---\n" + Body.trim(), updatedAt: new Date().toISOString(),
     });
   } else {
     insert("pulseResponses", {
-      id: randomUUID(),
-      memberId: member?.id || From,
-      memberName: member?.name || From,
-      org: member?.org || "Unknown",
-      orgKey: member?.orgKey || "unknown",
-      orgColor: member?.orgColor || "#888",
-      week,
-      q1: parsed.q1,
-      q2: parsed.q2,
-      q3: parsed.q3,
-      raw: Body.trim(),
-      receivedAt: new Date().toISOString(),
+      id: randomUUID(), memberId: member?.id || From, memberName: member?.name || From,
+      org: member?.org || "Unknown", orgKey: member?.orgKey || "unknown", orgColor: member?.orgColor || "#888",
+      week, q1: parsed.q1, q2: parsed.q2, q3: parsed.q3, raw: Body.trim(), receivedAt: new Date().toISOString(),
     });
   }
 
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?>
-<Response><Message>Thanks! Your response has been recorded for this week's Ward Council. 🙏</Message></Response>`;
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Thanks! Your response has been recorded for this week's Ward Council. 🙏</Message></Response>`;
   res.type("text/xml").send(twiml);
 });
 
@@ -528,6 +541,259 @@ app.delete("/api/members/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── BISHOPRIC API ────────────────────────────────────────────────────────────
+const BISHOPRIC_IDS = ["bishop", "fc", "sc", "es", "wc"];
+
+function getBishopricMembers() {
+  return getMembers().filter(m => BISHOPRIC_IDS.includes(m.id));
+}
+
+app.get("/api/bishopric/agendas", (req, res) => {
+  res.json(getAll("bishopricAgendas").sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt)));
+});
+
+app.post("/api/bishopric/agendas/generate", async (req, res) => {
+  const week = req.body.week || getWeekKey();
+  const bishopricMembers = getBishopricMembers();
+  const pulseResponses = getAll("bishopricPulse").filter(r => r.week === week);
+  const goals = getAll("bishopricGoals");
+  const inboxItems = getAll("bishopricInbox").filter(i => !i.routed && (i.targetWeek === week || !i.targetWeek));
+
+  // Fetch notes
+  let notesText = "";
+  const notes = getAll("bishopricNotes").filter(n => n.week === week);
+  if (notes.length > 0) {
+    const latest = notes[notes.length - 1];
+    if (latest.text) notesText = latest.text;
+    else if (latest.url) {
+      try {
+        const r = await fetch(latest.url);
+        notesText = (await r.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
+      } catch { notesText = `[Notes URL provided but could not be fetched]`; }
+    }
+  }
+
+  try {
+    const agenda = await generateBishopricAgenda({ pulseResponses, goals, weekKey: week, members: bishopricMembers, notesText, inboxItems });
+    const saved = insert("bishopricAgendas", {
+      id: randomUUID(), week, ...agenda,
+      generatedAt: new Date().toISOString(), status: "draft",
+    });
+    res.json(saved);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/bishopric/agendas/:id", (req, res) => {
+  const updated = update("bishopricAgendas", req.params.id, { ...req.body, editedAt: new Date().toISOString() });
+  if (!updated) return res.status(404).json({ error: "Not found" });
+  res.json(updated);
+});
+
+app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
+  const agenda = getById("bishopricAgendas", req.params.id);
+  if (!agenda) return res.status(404).json({ error: "Not found" });
+  const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`).join("\n");
+  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx"));
+  const results = [];
+  for (const member of targets) {
+    try {
+      await sendSMS(member.phone, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
+      results.push({ memberId: member.id, success: true });
+    } catch (err) {
+      console.error(`[TWILIO ERROR] ${member.name}: ${err.message}`);
+      results.push({ memberId: member.id, success: false, error: err.message });
+    }
+  }
+  update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
+  res.json({ sent: results.filter(r => r.success).length, results });
+});
+
+app.delete("/api/bishopric/agendas/:id", (req, res) => {
+  remove("bishopricAgendas", req.params.id);
+  res.json({ ok: true });
+});
+
+// Bishopric notes
+app.get("/api/bishopric/notes", (req, res) => {
+  const { week } = req.query;
+  const all = getAll("bishopricNotes");
+  res.json(week ? all.filter(n => n.week === week) : all);
+});
+
+app.post("/api/bishopric/notes", (req, res) => {
+  const { week, url, text } = req.body;
+  if (!week || (!url && !text)) return res.status(400).json({ error: "week and url or text required" });
+  const existing = getAll("bishopricNotes").find(n => n.week === week);
+  if (existing) return res.json(update("bishopricNotes", existing.id, { url: url || null, text: text || null, updatedAt: new Date().toISOString() }));
+  res.json(insert("bishopricNotes", { id: randomUUID(), week, url: url || null, text: text || null, addedAt: new Date().toISOString() }));
+});
+
+// Bishopric pulse
+app.get("/api/bishopric/pulse", (req, res) => {
+  const { week } = req.query;
+  const all = getAll("bishopricPulse");
+  res.json(week ? all.filter(r => r.week === week) : all);
+});
+
+// Bishopric inbox (routed SMS items)
+app.get("/api/bishopric/inbox", (req, res) => {
+  res.json(getAll("bishopricInbox").filter(i => !i.routed));
+});
+
+app.post("/api/bishopric/inbox/:id/route", (req, res) => {
+  const { target } = req.body;
+  const item = getById("bishopricInbox", req.params.id);
+  if (!item) return res.status(404).json({ error: "Not found" });
+  update("bishopricInbox", item.id, { routed: true, routedTo: target, routedAt: new Date().toISOString() });
+
+  // Add as agenda item to target
+  if (target === "bishopric") {
+    const week = item.targetWeek || getWeekKey();
+    const agendas = getAll("bishopricAgendas").filter(a => a.week === week);
+    if (agendas.length > 0) {
+      const agenda = agendas[0];
+      const maxOrder = Math.max(0, ...(agenda.items || []).map(i => i.order));
+      const items = [...(agenda.items || []), { order: maxOrder + 1, title: item.body.slice(0, 60), duration: 5, type: "discussion", owner: item.fromName, notes: item.body, fromText: true, collaborationFlag: false }];
+      update("bishopricAgendas", agenda.id, { items });
+    }
+  } else if (target === "wardcouncil") {
+    const week = getWeekKey();
+    const agendas = getAll("agendas").filter(a => a.week === week);
+    if (agendas.length > 0) {
+      const agenda = agendas[0];
+      const maxOrder = Math.max(0, ...(agenda.items || []).map(i => i.order));
+      const items = [...(agenda.items || []), { order: maxOrder + 1, title: item.body.slice(0, 60), duration: 5, type: "discussion", owner: item.fromName, notes: item.body, fromText: true, collaborationFlag: false }];
+      update("agendas", agenda.id, { items });
+    }
+  }
+  res.json({ ok: true });
+});
+
+// ─── CALENDAR API ─────────────────────────────────────────────────────────────
+app.get("/api/calendar/events", async (req, res) => {
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  const serviceKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+  if (!calendarId || !serviceKey) {
+    // Fall back to local storage if Google not configured
+    return res.json(getAll("calendarEvents"));
+  }
+
+  try {
+    const { google } = await import("googleapis");
+    const key = JSON.parse(serviceKey);
+    const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/calendar"] });
+    const calendar = google.calendar({ version: "v3", auth });
+    const now = new Date();
+    const response = await calendar.events.list({
+      calendarId,
+      timeMin: new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString(),
+      timeMax: new Date(now.getFullYear(), now.getMonth() + 3, 0).toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 500,
+    });
+    const events = (response.data.items || []).map(ev => ({
+      id: ev.id,
+      title: ev.summary || "Untitled",
+      start: ev.start?.dateTime || ev.start?.date,
+      end: ev.end?.dateTime || ev.end?.date,
+      location: ev.location || "",
+      description: ev.description || "",
+      color: "#C9A84C",
+    }));
+    res.json(events);
+  } catch (err) {
+    console.error("[CALENDAR]", err.message);
+    res.json(getAll("calendarEvents"));
+  }
+});
+
+app.post("/api/calendar/events", async (req, res) => {
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  const serviceKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+  if (!calendarId || !serviceKey) {
+    const ev = insert("calendarEvents", { id: randomUUID(), ...req.body, createdAt: new Date().toISOString() });
+    return res.json(ev);
+  }
+
+  try {
+    const { google } = await import("googleapis");
+    const key = JSON.parse(serviceKey);
+    const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/calendar"] });
+    const calendar = google.calendar({ version: "v3", auth });
+    const { title, start, end, location, description } = req.body;
+    const response = await calendar.events.insert({
+      calendarId,
+      requestBody: {
+        summary: title,
+        location, description,
+        start: { dateTime: start },
+        end: { dateTime: end || start },
+      },
+    });
+    res.json({ id: response.data.id, title, start, end, location, description });
+  } catch (err) {
+    console.error("[CALENDAR]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/calendar/events/:id", async (req, res) => {
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  const serviceKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+  if (!calendarId || !serviceKey) {
+    const updated = update("calendarEvents", req.params.id, req.body);
+    return res.json(updated);
+  }
+
+  try {
+    const { google } = await import("googleapis");
+    const key = JSON.parse(serviceKey);
+    const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/calendar"] });
+    const calendar = google.calendar({ version: "v3", auth });
+    const { title, start, end, location, description } = req.body;
+    await calendar.events.update({
+      calendarId, eventId: req.params.id,
+      requestBody: {
+        summary: title, location, description,
+        start: { dateTime: start },
+        end: { dateTime: end || start },
+      },
+    });
+    res.json({ id: req.params.id, ...req.body });
+  } catch (err) {
+    console.error("[CALENDAR]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/calendar/events/:id", async (req, res) => {
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  const serviceKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+
+  if (!calendarId || !serviceKey) {
+    remove("calendarEvents", req.params.id);
+    return res.json({ ok: true });
+  }
+
+  try {
+    const { google } = await import("googleapis");
+    const key = JSON.parse(serviceKey);
+    const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/calendar"] });
+    const calendar = google.calendar({ version: "v3", auth });
+    await calendar.events.delete({ calendarId, eventId: req.params.id });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[CALENDAR]", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── MISSION PLAN API ─────────────────────────────────────────────────────────
 app.get("/api/mission-plan", (req, res) => {
   const plans = getAll("missionPlan");
@@ -608,6 +874,40 @@ cron.schedule("0 9 * * 3", async () => {
     memberIds: targets.map((m) => m.id),
     auto: true,
   });
+}, { timezone: "America/Denver" });
+
+// ─── CRON: Bishopric pulse every Thursday at 9am ──────────────────────────────
+cron.schedule("0 9 * * 4", async () => {
+  console.log("[CRON] Sending bishopric pulse...");
+  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx"));
+  for (const member of targets) {
+    try {
+      await sendSMS(member.phone, `Hi ${member.name.split(" ")[0]}! Bishopric meeting is this Sunday. Please reply with any items you'd like added to the agenda.\n\nYou can also specify a future week, e.g. "Add to agenda in 2 weeks: [topic]"`);
+      console.log(`  ✓ Bishopric pulse sent to ${member.name}`);
+    } catch (err) {
+      console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
+    }
+  }
+}, { timezone: "America/Denver" });
+
+// ─── CRON: Send bishopric agenda every Saturday at 8am ───────────────────────
+cron.schedule("0 8 * * 6", async () => {
+  console.log("[CRON] Sending bishopric agenda...");
+  const week = getWeekKey();
+  const agendas = getAll("bishopricAgendas").filter(a => a.week === week && a.status === "draft");
+  if (agendas.length === 0) { console.log("[CRON] No draft bishopric agenda for this week"); return; }
+  const agenda = agendas[0];
+  const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min)`).join("\n");
+  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx"));
+  for (const member of targets) {
+    try {
+      await sendSMS(member.phone, `📋 Bishopric Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
+    } catch (err) {
+      console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
+    }
+  }
+  update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
+  console.log("[CRON] Bishopric agenda sent");
 }, { timezone: "America/Denver" });
 
 const PORT = process.env.PORT || 3001;

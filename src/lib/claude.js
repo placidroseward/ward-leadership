@@ -255,3 +255,121 @@ Return only a valid JSON array:
   const clean = text.replace(/```json|```/g, "").trim();
   try { return JSON.parse(clean); } catch { return []; }
 }
+
+export async function generateBishopricAgenda({ pulseResponses, goals, weekKey, members = [], notesText = "", inboxItems = [] }) {
+  function pickRandom(pool, exclude = []) {
+    const avail = pool.filter(m => !exclude.includes(m.id));
+    if (avail.length === 0) return pool[0];
+    return avail[Math.floor(Math.random() * avail.length)];
+  }
+
+  const assigned = [];
+  const spiritualThought = pickRandom(members, assigned);
+  assigned.push(spiritualThought?.id);
+  const openingPrayer = pickRandom(members, assigned);
+  assigned.push(openingPrayer?.id);
+  const closingPrayer = pickRandom(members, assigned);
+
+  const fixed = {
+    openingPrayer: openingPrayer?.name || "Bishopric Member",
+    spiritualThought: spiritualThought?.name || "Bishopric Member",
+    closingPrayer: closingPrayer?.name || "Bishopric Member",
+  };
+
+  const pulseSummary = pulseResponses.map(r => `${r.memberName}: "${r.raw}"`).join("\n") || "No responses yet.";
+  const inboxSummary = inboxItems.map(i => `From ${i.fromName}: "${i.body}"`).join("\n") || "No items.";
+  const notesSummary = notesText || "No notes provided.";
+
+  const prompt = `You are helping an Executive Secretary prepare a Bishopric Meeting agenda for a congregation of The Church of Jesus Christ of Latter-day Saints.
+
+Bishopric meetings are typically 60-90 minutes and include the Bishop, First Counselor, Second Counselor, Executive Secretary, and Ward Clerk.
+
+## Pre-assigned roles:
+- Opening Prayer: ${fixed.openingPrayer}
+- Spiritual Thought: ${fixed.spiritualThought}  
+- Closing Prayer: ${fixed.closingPrayer}
+
+## Agenda items from SMS (this week):
+${inboxSummary}
+
+## Meeting notes / OneNote content:
+${notesSummary}
+
+## Member check-in responses:
+${pulseSummary}
+
+## Task:
+Generate a structured Bishopric Meeting agenda. Standard items include:
+- Interviews and personal ministry follow-ups
+- Membership matters (new members, ordinances, callings, releases)
+- Ward needs and welfare
+- Coordination with organizations
+- Calendar and upcoming events
+- Any specific items from the SMS inbox above
+
+First item must be Opening Prayer (${fixed.openingPrayer}), second Spiritual Thought (${fixed.spiritualThought}), last item Closing Prayer (${fixed.closingPrayer}).
+
+Return only valid JSON:
+{
+  "title": "Bishopric Meeting — ${weekKey}",
+  "totalMinutes": 75,
+  "assignments": { "openingPrayer": "${fixed.openingPrayer}", "spiritualThought": "${fixed.spiritualThought}", "closingPrayer": "${fixed.closingPrayer}" },
+  "items": [{ "order": 1, "title": "...", "duration": 5, "type": "opening|discussion|report|action|interview|closing", "owner": "...", "notes": "...", "collaborationFlag": false }],
+  "insights": ["...", "..."]
+}`;
+
+  const response = await getClient().messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 2000,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = response.content.map(b => b.text || "").join("");
+  const clean = text.replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    return {
+      title: `Bishopric Meeting — ${weekKey}`,
+      totalMinutes: 75,
+      assignments: fixed,
+      items: [
+        { order: 1, title: "Opening Prayer", duration: 1, type: "opening", owner: fixed.openingPrayer, notes: "", collaborationFlag: false },
+        { order: 2, title: "Spiritual Thought", duration: 5, type: "opening", owner: fixed.spiritualThought, notes: "", collaborationFlag: false },
+        { order: 3, title: "Business", duration: 68, type: "discussion", owner: "Bishop", notes: text, collaborationFlag: false },
+        { order: 4, title: "Closing Prayer", duration: 1, type: "closing", owner: fixed.closingPrayer, notes: "", collaborationFlag: false },
+      ],
+      insights: [],
+    };
+  }
+}
+
+export async function routeSMS({ body, fromName, currentWeek }) {
+  const prompt = `You are an AI routing assistant for a church (LDS ward) dashboard. A bishopric member just sent a text message. Determine where this message should be routed.
+
+Message from ${fromName}: "${body}"
+Current week: ${currentWeek}
+
+Routing options:
+- "bishopric" = add to bishopric meeting agenda (default for most messages)
+- "wardcouncil" = add to ward council agenda (only if message explicitly mentions ward council)
+
+Also determine the target week if specified (e.g. "in two weeks", "next week", "week after next").
+
+Return only valid JSON:
+{ "destination": "bishopric" | "wardcouncil", "targetWeek": "${currentWeek}" | null, "reasoning": "brief explanation" }`;
+
+  const response = await getClient().messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 200,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = response.content[0]?.text || "{}";
+  const clean = text.replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    return { destination: "bishopric", targetWeek: currentWeek };
+  }
+}
