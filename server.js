@@ -8,7 +8,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
-import { sendPulse, sendBishopricPulse, sendSMS, pollInbox, parsePulseResponse, getGatewayEmail } from "./src/lib/gmail.js";
+import { sendPulse, sendBishopricPulse, sendSMS, sendSMSChunked, pollInbox, parsePulseResponse, getGatewayEmail } from "./src/lib/gmail.js";
 import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
 
@@ -513,7 +513,7 @@ app.post("/api/agendas/:id/send", async (req, res) => {
   for (const member of targets) {
     const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
-      await sendSMS(gatewayEmail, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Ward Council Agenda");
+      await sendSMSChunked(gatewayEmail, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Ward Council Agenda");
       results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
@@ -674,7 +674,7 @@ app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   for (const member of targets) {
     const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
-      await sendSMS(gatewayEmail, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Bishopric Meeting Agenda");
+      await sendSMSChunked(gatewayEmail, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Bishopric Meeting Agenda");
       results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
@@ -980,7 +980,7 @@ cron.schedule("0 8 * * 6", async () => {
   for (const member of targets) {
     try {
       const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
-      await sendSMS(gatewayEmail, `📋 Bishopric Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Bishopric Meeting Agenda");
+      await sendSMSChunked(gatewayEmail, `📋 Bishopric Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`, "Bishopric Meeting Agenda");
     } catch (err) {
       console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
     }

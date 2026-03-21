@@ -58,7 +58,34 @@ export async function sendSMS(gatewayEmail, body, subject = "Ward Message") {
   return gmail.users.messages.send({ userId: "me", requestBody: { raw } });
 }
 
-export async function sendPulse(member) {
+export async function sendSMSChunked(gatewayEmail, body, subject = "Ward Message", chunkSize = 300) {
+  if (!gatewayEmail) throw new Error("No gateway email address — check carrier setting for this member");
+
+  // Split into lines, then group into chunks under chunkSize characters
+  const lines = body.split("\n");
+  const chunks = [];
+  let current = "";
+
+  for (const line of lines) {
+    const candidate = current ? current + "\n" + line : line;
+    if (candidate.length > chunkSize && current) {
+      chunks.push(current);
+      current = line;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) chunks.push(current);
+
+  const gmail = getGmailClient();
+  for (let i = 0; i < chunks.length; i++) {
+    const partLabel = chunks.length > 1 ? ` (${i + 1}/${chunks.length})` : "";
+    const raw = buildRawEmail(gatewayEmail, subject + partLabel, chunks[i]);
+    await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+    // Small delay between messages to avoid rate limiting
+    if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 500));
+  }
+}
   const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
   if (!gatewayEmail) {
     console.warn(`[GMAIL] No gateway for ${member.name} — missing carrier`);
