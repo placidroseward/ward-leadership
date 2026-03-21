@@ -86,6 +86,8 @@ export async function sendSMSChunked(gatewayEmail, body, subject = "Ward Message
     if (i < chunks.length - 1) await new Promise(r => setTimeout(r, 500));
   }
 }
+
+export async function sendPulse(member) {
   const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
   if (!gatewayEmail) {
     console.warn(`[GMAIL] No gateway for ${member.name} — missing carrier`);
