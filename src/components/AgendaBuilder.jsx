@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import SendLogModal from "./SendLogModal.jsx";
 
 const TYPE_COLORS = {
   opening: "#C9A84C",
@@ -91,6 +92,7 @@ export default function AgendaBuilder({ api, week }) {
   const [selected, setSelected] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
+  const [sendLog, setSendLog] = useState(null);
   const [toast, setToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const [minutesUrl, setMinutesUrl] = useState("");
@@ -177,7 +179,7 @@ export default function AgendaBuilder({ api, week }) {
       await save();
       const res = await fetch(`${api}/api/agendas/${selected.id}/send`, { method: "POST" });
       const data = await res.json();
-      showToast(`Agenda sent to ${data.sent} members via SMS`);
+      setSendLog({ title: "Ward Council Agenda Send Log", results: data.results || [] });
       load();
     } catch { showToast("Error sending"); }
     setSending(false);
@@ -202,6 +204,7 @@ export default function AgendaBuilder({ api, week }) {
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {toast && <div className="toast">{toast}</div>}
+      {sendLog && <SendLogModal title={sendLog.title} results={sendLog.results} onClose={() => setSendLog(null)} />}
 
       {/* Left: Agenda list */}
       <div className="scroll" style={{ width: 280, borderRight: "1px solid var(--border)", padding: 16, flexShrink: 0, background: "var(--surface)" }}>

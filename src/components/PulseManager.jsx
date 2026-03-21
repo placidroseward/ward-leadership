@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import SendLogModal from "./SendLogModal.jsx";
 
 const ORG_COLORS = {
   "Bishopric": "#C9A84C",
@@ -210,6 +211,8 @@ export default function PulseManager({ api, week }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const [sendLog, setSendLog] = useState(null);
+
   const sendPulse = async (memberIds) => {
     try {
       const res = await fetch(`${api}/api/pulse/send`, {
@@ -218,7 +221,7 @@ export default function PulseManager({ api, week }) {
         body: JSON.stringify({ memberIds }),
       });
       const data = await res.json();
-      setToast(`Pulse sent to ${data.sent} member${data.sent !== 1 ? "s" : ""}`);
+      setSendLog({ title: "Ward Council Pulse Send Log", results: data.results || [] });
     } catch {
       setToast("Error sending pulse");
     }
@@ -249,6 +252,7 @@ export default function PulseManager({ api, week }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
+      {sendLog && <SendLogModal title={sendLog.title} results={sendLog.results} onClose={() => setSendLog(null)} />}
       {showSendModal && (
         <SendPulseModal
           members={members}

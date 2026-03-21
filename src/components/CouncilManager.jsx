@@ -18,8 +18,21 @@ function Toast({ msg, onDone }) {
 
 function MemberForm({ initial, onSave, onCancel }) {
   const [form, setForm] = useState(initial || {
-    name: "", role: "", phone: "", orgKey: "bishopric",
+    name: "", role: "", phone: "", orgKey: "bishopric", carrier: "",
   });
+
+  const CARRIERS = [
+    { value: "", label: "— Select carrier —" },
+    { value: "att", label: "AT&T" },
+    { value: "boost", label: "Boost Mobile" },
+    { value: "cricket", label: "Cricket Wireless" },
+    { value: "metro", label: "Metro by T-Mobile" },
+    { value: "straighttalk", label: "Straight Talk" },
+    { value: "tmobile", label: "T-Mobile" },
+    { value: "uscellular", label: "US Cellular" },
+    { value: "verizon", label: "Verizon" },
+    { value: "xfinity", label: "Xfinity Mobile" },
+  ];
 
   const selectedOrg = ORG_OPTIONS.find(o => o.key === form.orgKey) || ORG_OPTIONS[0];
 
@@ -48,6 +61,7 @@ function MemberForm({ initial, onSave, onCancel }) {
     onSave({
       ...form,
       phone: phone ? formatPhone(cleaned) : "",
+      carrier: form.carrier || "",
       name: form.name.trim(),
       role: form.role.trim() || selectedOrg.name,
       org: selectedOrg.name,
@@ -91,27 +105,24 @@ function MemberForm({ initial, onSave, onCancel }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div className="field">
           <label className="label">Organization *</label>
-          <select
-            className="input"
-            value={form.orgKey}
-            onChange={e => setForm(f => ({ ...f, orgKey: e.target.value }))}
-          >
-            {ORG_OPTIONS.map(o => (
-              <option key={o.key} value={o.key}>{o.name}</option>
-            ))}
+          <select className="input" value={form.orgKey} onChange={e => setForm(f => ({ ...f, orgKey: e.target.value }))}>
+            {ORG_OPTIONS.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
           </select>
         </div>
         <div className="field">
           <label className="label">Phone Number</label>
-          <input
-            className="input"
-            value={form.phone}
-            onChange={handlePhone}
-            placeholder="+1xxxxxxxxxx"
-          />
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-            Format: +1 followed by 10 digits
-          </div>
+          <input className="input" value={form.phone} onChange={handlePhone} placeholder="+1xxxxxxxxxx" />
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Format: +1 followed by 10 digits</div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label className="label">Cell Carrier</label>
+          <select className="input" value={form.carrier || ""} onChange={e => setForm(f => ({ ...f, carrier: e.target.value }))}>
+            {CARRIERS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>Required for SMS delivery</div>
         </div>
       </div>
 
@@ -167,6 +178,10 @@ function MemberCard({ member, onEdit, onDelete }) {
         {member.phone && (
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1, fontFamily: "var(--font-mono)" }}>
             {member.phone}
+            {member.carrier
+              ? <span style={{ marginLeft: 8, color: "var(--success)", fontFamily: "var(--font-mono)" }}>✓ {member.carrier}</span>
+              : <span style={{ marginLeft: 8, color: "var(--warning)" }}>⚠ No carrier</span>
+            }
           </div>
         )}
         {!member.phone && (

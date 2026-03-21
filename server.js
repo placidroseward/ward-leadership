@@ -361,20 +361,27 @@ app.post("/api/pulse/send", async (req, res) => {
   const results = [];
 
   for (const member of targets) {
+    const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
       await sendPulse(member);
-      results.push({ memberId: member.id, success: true });
+      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
-      results.push({ memberId: member.id, success: false, error: err.message });
+      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: false, error: err.message });
     }
+  }
+
+  // Also log members skipped due to missing carrier
+  const skipped = memberList.filter(m => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
+  for (const m of skipped) {
+    results.push({ memberId: m.id, memberName: m.name, gatewayEmail: null, success: false, error: "No carrier set — skipped" });
   }
 
   insert("sentPulses", {
     id: randomUUID(), week, sentAt: new Date().toISOString(),
     memberIds: targets.map((m) => m.id),
   });
-  res.json({ sent: results.filter(r => r.success).length, results });
+  res.json({ sent: results.filter(r => r.success).length, total: results.length, results });
 });
 
 app.post("/api/pulse/manual", (req, res) => {
@@ -469,21 +476,25 @@ app.post("/api/agendas/:id/send", async (req, res) => {
 
   const memberList = getMembers();
   const targets = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
+  const skipped = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
   const results = [];
 
   for (const member of targets) {
+    const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
-      const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
       await sendSMS(gatewayEmail, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
-      results.push({ memberId: member.id, success: true });
+      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
-      results.push({ memberId: member.id, success: false, error: err.message });
+      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: false, error: err.message });
     }
+  }
+  for (const m of skipped) {
+    results.push({ memberId: m.id, memberName: m.name, gatewayEmail: null, success: false, error: "No carrier set — skipped" });
   }
 
   update("agendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
-  res.json({ sent: results.filter(r => r.success).length, results });
+  res.json({ sent: results.filter(r => r.success).length, total: results.length, results });
 });
 
 app.delete("/api/agendas/:id", (req, res) => {
@@ -623,20 +634,25 @@ app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   const agenda = getById("bishopricAgendas", req.params.id);
   if (!agenda) return res.status(404).json({ error: "Not found" });
   const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`).join("\n");
-  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
+  const allBishopric = getBishopricMembers();
+  const targets = allBishopric.filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
+  const skipped = allBishopric.filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
   const results = [];
   for (const member of targets) {
+    const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
     try {
-      const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
       await sendSMS(gatewayEmail, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
-      results.push({ memberId: member.id, success: true });
+      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
     } catch (err) {
       console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
-      results.push({ memberId: member.id, success: false, error: err.message });
+      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: false, error: err.message });
     }
   }
+  for (const m of skipped) {
+    results.push({ memberId: m.id, memberName: m.name, gatewayEmail: null, success: false, error: "No carrier set — skipped" });
+  }
   update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
-  res.json({ sent: results.filter(r => r.success).length, results });
+  res.json({ sent: results.filter(r => r.success).length, total: results.length, results });
 });
 
 app.delete("/api/bishopric/agendas/:id", (req, res) => {

@@ -1,12 +1,26 @@
 import { useState, useEffect } from "react";
 
 function EditUserModal({ user, api, currentUser, onSave, onClose }) {
+  const CARRIERS = [
+    { value: "", label: "— Select carrier —" },
+    { value: "att", label: "AT&T" },
+    { value: "boost", label: "Boost Mobile" },
+    { value: "cricket", label: "Cricket Wireless" },
+    { value: "metro", label: "Metro by T-Mobile" },
+    { value: "straighttalk", label: "Straight Talk" },
+    { value: "tmobile", label: "T-Mobile" },
+    { value: "uscellular", label: "US Cellular" },
+    { value: "verizon", label: "Verizon" },
+    { value: "xfinity", label: "Xfinity Mobile" },
+  ];
+
   const [form, setForm] = useState({
     firstName: user.firstName || "",
     lastName: user.lastName || "",
     email: user.email || "",
     calling: user.calling || "",
     phone: user.phone || "",
+    carrier: user.carrier || "",
     role: user.role || "user",
   });
   const [msg, setMsg] = useState(null);
@@ -93,6 +107,14 @@ function EditUserModal({ user, api, currentUser, onSave, onClose }) {
               <input className="input" value={form.phone} onChange={e => f("phone", e.target.value)} />
             </div>
             <div>
+              <label className="label">Cell Carrier</label>
+              <select className="input" value={form.carrier || ""} onChange={e => f("carrier", e.target.value)}>
+                {CARRIERS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="two-col" style={{ marginBottom: 16 }}>
+            <div>
               <label className="label">Role</label>
               <select className="input" value={form.role} onChange={e => f("role", e.target.value)}
                 disabled={user.id === currentUser.id}>
@@ -129,7 +151,20 @@ function EditUserModal({ user, api, currentUser, onSave, onClose }) {
 
 export default function UserManager({ api, currentUser }) {
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", calling: "", phone: "", role: "user" });
+  const CARRIERS = [
+    { value: "", label: "— Select carrier —" },
+    { value: "att", label: "AT&T" },
+    { value: "boost", label: "Boost Mobile" },
+    { value: "cricket", label: "Cricket Wireless" },
+    { value: "metro", label: "Metro by T-Mobile" },
+    { value: "straighttalk", label: "Straight Talk" },
+    { value: "tmobile", label: "T-Mobile" },
+    { value: "uscellular", label: "US Cellular" },
+    { value: "verizon", label: "Verizon" },
+    { value: "xfinity", label: "Xfinity Mobile" },
+  ];
+
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", calling: "", phone: "", carrier: "", role: "user" });
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState(null);
@@ -151,7 +186,7 @@ export default function UserManager({ api, currentUser }) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setForm({ firstName: "", lastName: "", email: "", calling: "", phone: "", role: "user" });
+      setForm({ firstName: "", lastName: "", email: "", calling: "", phone: "", carrier: "", role: "user" });
       setMsg("User added — they can set their password on first login");
       setTimeout(() => setMsg(null), 3000);
       load();
@@ -210,6 +245,14 @@ export default function UserManager({ api, currentUser }) {
             <input className="input" value={form.phone} onChange={e => f("phone", e.target.value)} placeholder="+1xxxxxxxxxx" />
           </div>
           <div>
+            <label className="label">Cell Carrier</label>
+            <select className="input" value={form.carrier || ""} onChange={e => f("carrier", e.target.value)}>
+              {CARRIERS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="two-col" style={{ marginBottom: 12 }}>
+          <div>
             <label className="label">Role</label>
             <select className="input" value={form.role} onChange={e => f("role", e.target.value)}>
               <option value="user">User</option>
@@ -249,6 +292,15 @@ export default function UserManager({ api, currentUser }) {
             </div>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{u.email}</div>
             {u.calling && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{u.calling}</div>}
+            {u.phone && (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, fontFamily: "var(--font-mono)" }}>
+                {u.phone}
+                {u.carrier
+                  ? <span style={{ marginLeft: 6, color: "var(--success)" }}>✓ {u.carrier}</span>
+                  : <span style={{ marginLeft: 6, color: "var(--warning)" }}>⚠ no carrier</span>
+                }
+              </div>
+            )}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{
