@@ -4,9 +4,9 @@ export const ORGANIZATIONS = {
     name: "Bishopric",
     color: "#C9A84C",
     members: [
-      { id: "bishop", name: "Bishop", role: "Bishop", phone: "+1xxxxxxxxxx" },
-      { id: "fc", name: "First Counselor", role: "First Counselor", phone: "+1xxxxxxxxxx" },
-      { id: "sc", name: "Second Counselor", role: "Second Counselor", phone: "+1xxxxxxxxxx" },
+      { id: "bishop", name: "Nathan Banks", role: "Bishop", phone: "+18014557980", carrier: "xfinity" },
+      { id: "fc", name: "Dave Wells", role: "First Counselor", phone: "+18015187476", carrier: "" },
+      { id: "sc", name: "Jorge Mohor", role: "Second Counselor", phone: "+13852232900", carrier: "" },
     ],
   },
   relief_society: {
@@ -27,7 +27,7 @@ export const ORGANIZATIONS = {
     name: "Young Women",
     color: "#A07CB5",
     members: [
-      { id: "ywp", name: "YW President", role: "Young Women President", phone: "+1xxxxxxxxxx" },
+      { id: "ywp", name: "Kristal James", role: "YW President", phone: "+18018425904", carrier: "xfinity" },
     ],
   },
   primary: {
@@ -55,14 +55,14 @@ export const ORGANIZATIONS = {
     name: "Executive Secretary",
     color: "#888888",
     members: [
-      { id: "es", name: "Executive Secretary", role: "Executive Secretary (You)", phone: "+1xxxxxxxxxx" },
+      { id: "es", name: "Tyler Peterson", role: "Executive Secretary", phone: "+18013802475", carrier: "verizon" },
     ],
   },
   ward_clerk: {
     name: "Ward Clerk",
     color: "#6B7E9E",
     members: [
-      { id: "wc", name: "Ward Clerk", role: "Ward Clerk", phone: "+1xxxxxxxxxx" },
+      { id: "wc", name: "Ward Clerk", role: "Ward Clerk", phone: "+1xxxxxxxxxx", carrier: "" },
     ],
   },
 };

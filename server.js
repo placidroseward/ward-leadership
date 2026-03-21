@@ -8,7 +8,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
-import { sendPulse, parsePulseResponse, sendSMS } from "./src/lib/twilio.js";
+import { sendPulse, sendBishopricPulse, sendSMS, pollInbox, parsePulseResponse, getGatewayEmail } from "./src/lib/gmail.js";
 import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
 
@@ -257,61 +257,90 @@ app.delete("/api/users/:id", requireAdmin, (req, res) => {
 });
 
 // ─── TWILIO WEBHOOK ───────────────────────────────────────────────────────────
-app.post("/webhook/sms", async (req, res) => {
-  const { From, Body } = req.body;
-  if (!From || !Body) return res.sendStatus(200);
+// ─── GMAIL POLLING ────────────────────────────────────────────────────────────
+// Poll Gmail inbox every 5 minutes for new replies
+let lastPolled = Date.now() - 300000;
 
-  const memberList = getMembers();
-  const member = memberList.find((m) => m.phone === From);
-  const week = getWeekKey();
-  const parsed = parsePulseResponse(Body.trim());
-  const isBishopric = member && BISHOPRIC_IDS.includes(member.id);
+async function processIncomingMessages() {
+  try {
+    const messages = await pollInbox(lastPolled);
+    lastPolled = Date.now();
+    const memberList = getMembers();
+    const week = getWeekKey();
 
-  // AI-powered routing for bishopric members
-  if (isBishopric) {
-    try {
-      const routingResult = await routeSMS({ body: Body.trim(), fromName: member.name, currentWeek: week });
-      if (routingResult.destination === "bishopric") {
-        insert("bishopricInbox", {
-          id: randomUUID(), body: Body.trim(), fromName: member.name, fromPhone: From,
-          targetWeek: routingResult.targetWeek || week, receivedAt: new Date().toISOString(), routed: false,
-        });
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've added that to the ${routingResult.targetWeek && routingResult.targetWeek !== week ? routingResult.targetWeek : "upcoming"} bishopric meeting agenda. 🙏</Message></Response>`;
-        return res.type("text/xml").send(twiml);
-      } else if (routingResult.destination === "wardcouncil") {
-        insert("bishopricInbox", {
-          id: randomUUID(), body: Body.trim(), fromName: member.name, fromPhone: From,
-          targetWeek: week, receivedAt: new Date().toISOString(), routed: false, suggestedTarget: "wardcouncil",
-        });
-        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Got it! I've flagged that for the Ward Council agenda. 🙏</Message></Response>`;
-        return res.type("text/xml").send(twiml);
+    for (const msg of messages) {
+      // Match by phone number extracted from gateway email
+      const member = msg.phone ? memberList.find(m => m.phone === msg.phone) : null;
+      const isBishopric = member && BISHOPRIC_IDS.includes(member.id);
+
+      if (isBishopric && msg.body) {
+        // AI route bishopric messages
+        try {
+          const routingResult = await routeSMS({ body: msg.body, fromName: member?.name || msg.from, currentWeek: week });
+          insert("bishopricInbox", {
+            id: randomUUID(), body: msg.body,
+            fromName: member?.name || msg.from, fromPhone: msg.phone || msg.from,
+            targetWeek: routingResult.targetWeek || week,
+            receivedAt: msg.date || new Date().toISOString(),
+            routed: false,
+            suggestedTarget: routingResult.destination,
+            gmailId: msg.gmailId,
+          });
+          console.log(`[GMAIL] Routed message from ${member?.name} to ${routingResult.destination}`);
+        } catch (err) {
+          console.error("[GMAIL ROUTING]", err.message);
+        }
+        continue;
       }
-    } catch (err) {
-      console.error("[ROUTING]", err.message);
+
+      // Standard Ward Council pulse response
+      const parsed = parsePulseResponse(msg.body || "");
+      const existing = getAll("pulseResponses").find(
+        r => r.memberId === (member?.id || msg.from) && r.week === week
+      );
+
+      if (existing) {
+        update("pulseResponses", existing.id, {
+          q1: existing.q1 || parsed.q1,
+          q2: existing.q2 || parsed.q2,
+          q3: existing.q3 || parsed.q3,
+          raw: existing.raw + "\n---\n" + msg.body,
+          updatedAt: new Date().toISOString(),
+        });
+      } else {
+        insert("pulseResponses", {
+          id: randomUUID(),
+          memberId: member?.id || msg.from,
+          memberName: member?.name || msg.from,
+          org: member?.org || "Unknown",
+          orgKey: member?.orgKey || "unknown",
+          orgColor: member?.orgColor || "#888",
+          week, q1: parsed.q1, q2: parsed.q2, q3: parsed.q3,
+          raw: msg.body, receivedAt: msg.date || new Date().toISOString(),
+          gmailId: msg.gmailId,
+        });
+      }
+      console.log(`[GMAIL] Processed pulse response from ${member?.name || msg.from}`);
     }
+  } catch (err) {
+    console.error("[GMAIL POLL]", err.message);
   }
+}
 
-  // Standard Ward Council pulse response handling
-  const existing = getAll("pulseResponses").find(
-    (r) => r.memberId === (member?.id || From) && r.week === week
-  );
+// Poll every 5 minutes
+cron.schedule("*/5 * * * *", processIncomingMessages);
 
-  if (existing) {
-    update("pulseResponses", existing.id, {
-      q1: existing.q1 || parsed.q1, q2: existing.q2 || parsed.q2, q3: existing.q3 || parsed.q3,
-      raw: existing.raw + "\n---\n" + Body.trim(), updatedAt: new Date().toISOString(),
-    });
-  } else {
-    insert("pulseResponses", {
-      id: randomUUID(), memberId: member?.id || From, memberName: member?.name || From,
-      org: member?.org || "Unknown", orgKey: member?.orgKey || "unknown", orgColor: member?.orgColor || "#888",
-      week, q1: parsed.q1, q2: parsed.q2, q3: parsed.q3, raw: Body.trim(), receivedAt: new Date().toISOString(),
-    });
+// Manual poll endpoint
+app.post("/api/poll-inbox", async (req, res) => {
+  try {
+    await processIncomingMessages();
+    res.json({ ok: true, polledAt: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Message>Thanks! Your response has been recorded for this week's Ward Council. 🙏</Message></Response>`;
-  res.type("text/xml").send(twiml);
 });
+
+
 
 // ─── PULSE API ─────────────────────────────────────────────────────────────────
 app.get("/api/pulse", (req, res) => {
@@ -326,7 +355,7 @@ app.post("/api/pulse/send", async (req, res) => {
   const memberList = getMembers();
   const targets = memberIds
     ? memberList.filter((m) => memberIds.includes(m.id))
-    : memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx"));
+    : memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
 
   const week = getWeekKey();
   const results = [];
@@ -336,15 +365,13 @@ app.post("/api/pulse/send", async (req, res) => {
       await sendPulse(member);
       results.push({ memberId: member.id, success: true });
     } catch (err) {
-      console.error(`[TWILIO ERROR] ${member.name}: ${err.message}`);
+      console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
       results.push({ memberId: member.id, success: false, error: err.message });
     }
   }
 
   insert("sentPulses", {
-    id: randomUUID(),
-    week,
-    sentAt: new Date().toISOString(),
+    id: randomUUID(), week, sentAt: new Date().toISOString(),
     memberIds: targets.map((m) => m.id),
   });
   res.json({ sent: results.filter(r => r.success).length, results });
@@ -441,15 +468,16 @@ app.post("/api/agendas/:id/send", async (req, res) => {
     .join("\n");
 
   const memberList = getMembers();
-  const targets = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx"));
+  const targets = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   const results = [];
 
   for (const member of targets) {
     try {
-      await sendSMS(member.phone, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
+      const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
+      await sendSMS(gatewayEmail, `📋 Ward Council Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
       results.push({ memberId: member.id, success: true });
     } catch (err) {
-      console.error(`[TWILIO ERROR] ${member.name}: ${err.message}`);
+      console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
       results.push({ memberId: member.id, success: false, error: err.message });
     }
   }
@@ -595,14 +623,15 @@ app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   const agenda = getById("bishopricAgendas", req.params.id);
   if (!agenda) return res.status(404).json({ error: "Not found" });
   const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`).join("\n");
-  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx"));
+  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   const results = [];
   for (const member of targets) {
     try {
-      await sendSMS(member.phone, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
+      const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
+      await sendSMS(gatewayEmail, `📋 Bishopric Meeting Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
       results.push({ memberId: member.id, success: true });
     } catch (err) {
-      console.error(`[TWILIO ERROR] ${member.name}: ${err.message}`);
+      console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
       results.push({ memberId: member.id, success: false, error: err.message });
     }
   }
@@ -858,7 +887,7 @@ app.get("/api/sent-pulses", (req, res) => res.json(getAll("sentPulses")));
 // ─── CRON: Send weekly pulse every Wednesday at 9am ───────────────────────────
 cron.schedule("0 9 * * 3", async () => {
   console.log("[CRON] Sending weekly pulse...");
-  const targets = getMembers().filter(m => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx"));
+  const targets = getMembers().filter(m => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   for (const member of targets) {
     try {
       await sendPulse(member);
@@ -879,10 +908,10 @@ cron.schedule("0 9 * * 3", async () => {
 // ─── CRON: Bishopric pulse every Thursday at 9am ──────────────────────────────
 cron.schedule("0 9 * * 4", async () => {
   console.log("[CRON] Sending bishopric pulse...");
-  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx"));
+  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   for (const member of targets) {
     try {
-      await sendSMS(member.phone, `Hi ${member.name.split(" ")[0]}! Bishopric meeting is this Sunday. Please reply with any items you'd like added to the agenda.\n\nYou can also specify a future week, e.g. "Add to agenda in 2 weeks: [topic]"`);
+      await sendBishopricPulse(member);
       console.log(`  ✓ Bishopric pulse sent to ${member.name}`);
     } catch (err) {
       console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
@@ -898,10 +927,11 @@ cron.schedule("0 8 * * 6", async () => {
   if (agendas.length === 0) { console.log("[CRON] No draft bishopric agenda for this week"); return; }
   const agenda = agendas[0];
   const text = agenda.items.map(i => `${i.order}. ${i.title} (${i.duration} min)`).join("\n");
-  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx"));
+  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
   for (const member of targets) {
     try {
-      await sendSMS(member.phone, `📋 Bishopric Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
+      const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
+      await sendSMS(gatewayEmail, `📋 Bishopric Agenda — ${agenda.week}\n\n${text}\n\nSee you Sunday! 🙏`);
     } catch (err) {
       console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
     }
