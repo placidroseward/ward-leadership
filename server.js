@@ -224,11 +224,42 @@ app.post("/api/users", requireAdmin, (req, res) => {
   res.json(safeUser(user));
 });
 
+// Sync shared fields between users and councilMembers collections
+function syncUserToMember(user) {
+  if (!user.phone) return;
+  const members = getAll("councilMembers");
+  const match = members.find(m => m.phone === user.phone);
+  if (match) {
+    const changes = {};
+    if (user.carrier !== undefined) changes.carrier = user.carrier;
+    if (user.firstName || user.lastName) changes.name = [user.firstName, user.lastName].filter(Boolean).join(" ");
+    if (Object.keys(changes).length > 0) update("councilMembers", match.id, changes);
+  }
+}
+
+function syncMemberToUser(member) {
+  if (!member.phone) return;
+  const users = getAll("users");
+  const match = users.find(u => u.phone === member.phone);
+  if (match) {
+    const changes = {};
+    if (member.carrier !== undefined) changes.carrier = member.carrier;
+    if (member.name) {
+      const parts = member.name.split(" ");
+      changes.firstName = parts[0] || match.firstName;
+      changes.lastName = parts.slice(1).join(" ") || match.lastName;
+    }
+    if (Object.keys(changes).length > 0) update("users", match.id, changes);
+  }
+}
+
 app.put("/api/users/:id", (req, res) => {
   const existing = getById("users", req.params.id);
   if (!existing) return res.status(404).json({ error: "Not found" });
-  const { passwordHash, ...allowed } = req.body; // never allow direct hash update
+  const { passwordHash, ...allowed } = req.body;
   const updated = update("users", req.params.id, allowed);
+  // Sync phone/carrier/name changes to matching council member
+  syncUserToMember(updated);
   res.json(safeUser(updated));
 });
 
@@ -572,6 +603,8 @@ app.post("/api/members", (req, res) => {
 app.put("/api/members/:id", (req, res) => {
   const updated = update("councilMembers", req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: "Not found" });
+  // Sync phone/carrier/name changes to matching user
+  syncMemberToUser(updated);
   res.json(updated);
 });
 
