@@ -51,10 +51,10 @@ function buildRawEmail(to, subject, body) {
   return Buffer.from(message).toString("base64url");
 }
 
-export async function sendSMS(gatewayEmail, body) {
+export async function sendSMS(gatewayEmail, body, subject = "Ward Message") {
   if (!gatewayEmail) throw new Error("No gateway email address — check carrier setting for this member");
   const gmail = getGmailClient();
-  const raw = buildRawEmail(gatewayEmail, "", body);
+  const raw = buildRawEmail(gatewayEmail, subject, body);
   return gmail.users.messages.send({ userId: "me", requestBody: { raw } });
 }
 
@@ -67,7 +67,7 @@ export async function sendPulse(member) {
   const greeting = `Hi ${member.name.split(" ")[0]}! It's time for your weekly Ward Council check-in (reply back to this number):\n\n`;
   const questions = PULSE_QUESTIONS.join("\n\n");
   const footer = `\n\nYou can reply all at once or separately. Thank you! 🙏`;
-  return sendSMS(gatewayEmail, greeting + questions + footer);
+  return sendSMS(gatewayEmail, greeting + questions + footer, "Ward Council Pulse");
 }
 
 export async function sendBishopricPulse(member) {
@@ -77,7 +77,7 @@ export async function sendBishopricPulse(member) {
     return;
   }
   const msg = `Hi ${member.name.split(" ")[0]}! Bishopric meeting is this Sunday. Please reply with any items you'd like added to the agenda.\n\nYou can also specify a future week, e.g. "Add to agenda in 2 weeks: [topic]"`;
-  return sendSMS(gatewayEmail, msg);
+  return sendSMS(gatewayEmail, msg, "Bishopric Agenda Items");
 }
 
 // Poll Gmail inbox for replies from council members
