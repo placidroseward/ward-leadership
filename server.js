@@ -471,19 +471,20 @@ app.post("/api/agendas/:id/send", async (req, res) => {
   const agenda = getById("agendas", req.params.id);
   if (!agenda) return res.status(404).json({ error: "Not found" });
 
-  const appUrl = process.env.APP_URL || "https://placid-rose-ward-leadership.up.railway.app";
   const a = agenda.assignments || {};
-  const lines = [
-    `Ward Council ${agenda.week}`,
-    a.openingPrayer    ? `1. Opening Prayer - ${a.openingPrayer}`    : null,
-    a.spiritualThought ? `2. Spiritual Thought - ${a.spiritualThought}` : null,
-    a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
-    `Full agenda: ${appUrl}`,
-  ].filter(Boolean);
-  const shortMsg = lines.join("\n");
+  const itemLines = (agenda.items || []).map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`);
+  const msg = [
+    `📋 Ward Council ${agenda.week}`,
+    ``,
+    a.openingPrayer    ? `Opening Prayer: ${a.openingPrayer}`    : null,
+    a.spiritualThought ? `Spiritual Thought: ${a.spiritualThought}` : null,
+    a.closingPrayer    ? `Closing Prayer: ${a.closingPrayer}`    : null,
+    ``,
+    ...itemLines,
+  ].filter(s => s !== null).join("\n");
 
   try {
-    await sendToWardCouncil(shortMsg);
+    await sendToWardCouncil(msg);
     update("agendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
     res.json({ sent: 1, total: 1, results: [{ memberName: "Ward Council Group", success: true, gatewayEmail: "GroupMe" }] });
   } catch (err) {
@@ -630,18 +631,21 @@ app.put("/api/bishopric/agendas/:id", (req, res) => {
 app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   const agenda = getById("bishopricAgendas", req.params.id);
   if (!agenda) return res.status(404).json({ error: "Not found" });
-  const appUrl = process.env.APP_URL || "https://placid-rose-ward-leadership.up.railway.app";
+
   const a = agenda.assignments || {};
-  const lines = [
-    `Bishopric Mtg ${agenda.week}`,
-    a.openingPrayer    ? `1. Opening Prayer - ${a.openingPrayer}`    : null,
-    a.spiritualThought ? `2. Spiritual Thought - ${a.spiritualThought}` : null,
-    a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
-    `Full agenda: ${appUrl}`,
-  ].filter(Boolean);
-  const shortMsg = lines.join("\n");
+  const itemLines = (agenda.items || []).map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`);
+  const msg = [
+    `📋 Bishopric Meeting ${agenda.week}`,
+    ``,
+    a.openingPrayer    ? `Opening Prayer: ${a.openingPrayer}`    : null,
+    a.spiritualThought ? `Spiritual Thought: ${a.spiritualThought}` : null,
+    a.closingPrayer    ? `Closing Prayer: ${a.closingPrayer}`    : null,
+    ``,
+    ...itemLines,
+  ].filter(s => s !== null).join("\n");
+
   try {
-    await sendToBishopric(shortMsg);
+    await sendToBishopric(msg);
     update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
     res.json({ sent: 1, total: 1, results: [{ memberName: "Bishopric Group", success: true, gatewayEmail: "GroupMe" }] });
   } catch (err) {
@@ -928,17 +932,19 @@ cron.schedule("0 8 * * 6", async () => {
   const agendas = getAll("bishopricAgendas").filter(a => a.week === week && a.status === "draft");
   if (agendas.length === 0) { console.log("[CRON] No draft bishopric agenda for this week"); return; }
   const agenda = agendas[0];
-  const appUrl = process.env.APP_URL || "https://placid-rose-ward-leadership.up.railway.app";
   const a = agenda.assignments || {};
-  const lines = [
-    `Bishopric Mtg ${agenda.week}`,
-    a.openingPrayer    ? `1. Opening Prayer - ${a.openingPrayer}`    : null,
-    a.spiritualThought ? `2. Spiritual Thought - ${a.spiritualThought}` : null,
-    a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
-    `Full agenda: ${appUrl}`,
-  ].filter(Boolean);
+  const itemLines = (agenda.items || []).map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`);
+  const msg = [
+    `📋 Bishopric Meeting ${agenda.week}`,
+    ``,
+    a.openingPrayer    ? `Opening Prayer: ${a.openingPrayer}`    : null,
+    a.spiritualThought ? `Spiritual Thought: ${a.spiritualThought}` : null,
+    a.closingPrayer    ? `Closing Prayer: ${a.closingPrayer}`    : null,
+    ``,
+    ...itemLines,
+  ].filter(s => s !== null).join("\n");
   try {
-    await sendToBishopric(lines.join("\n"));
+    await sendToBishopric(msg);
     update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
     console.log("[CRON] Bishopric agenda sent");
   } catch (err) {
