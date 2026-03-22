@@ -716,12 +716,24 @@ app.post("/api/bishopric/inbox/:id/route", (req, res) => {
 });
 
 // ─── CALENDAR API ─────────────────────────────────────────────────────────────
+app.get("/api/calendar/debug", async (req, res) => {
+  const calendarId = process.env.GOOGLE_CALENDAR_ID;
+  const serviceKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!calendarId) return res.json({ error: "GOOGLE_CALENDAR_ID not set" });
+  if (!serviceKey) return res.json({ error: "GOOGLE_SERVICE_ACCOUNT_KEY not set" });
+  try {
+    const key = JSON.parse(serviceKey);
+    res.json({ calendarId, serviceAccountEmail: key.client_email, keyType: key.type, ok: true });
+  } catch (err) {
+    res.json({ error: "Failed to parse GOOGLE_SERVICE_ACCOUNT_KEY: " + err.message });
+  }
+});
+
 app.get("/api/calendar/events", async (req, res) => {
   const calendarId = process.env.GOOGLE_CALENDAR_ID;
   const serviceKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
 
   if (!calendarId || !serviceKey) {
-    // Fall back to local storage if Google not configured
     return res.json(getAll("calendarEvents"));
   }
 
@@ -751,7 +763,7 @@ app.get("/api/calendar/events", async (req, res) => {
     res.json(events);
   } catch (err) {
     console.error("[CALENDAR]", err.message);
-    res.json(getAll("calendarEvents"));
+    res.json({ error: err.message, events: [] });
   }
 });
 

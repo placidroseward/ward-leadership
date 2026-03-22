@@ -154,7 +154,7 @@ export default function WardCalendar({ api }) {
     try {
       const res = await fetch(`${api}/api/calendar/events`);
       const data = await res.json();
-      setEvents(Array.isArray(data) ? data : []);
+      setEvents(Array.isArray(data) ? data : (data.events || []));
     } catch { setEvents([]); }
     setLoading(false);
   }, [api]);
