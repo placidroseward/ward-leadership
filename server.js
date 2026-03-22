@@ -8,7 +8,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
-import { sendPulse, sendBishopricPulse, sendToWardCouncil, sendToBishopric, parsePulseResponse, matchMember } from "./src/lib/groupme.js";
+import { sendPulse, sendBishopricPulse, sendToWardCouncil, sendToBishopric, parsePulseResponse, matchMember } from "./groupme.js";
 import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
 

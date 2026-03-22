@@ -1,4 +1,4 @@
-import { PULSE_QUESTIONS } from "../data/council.js";
+import { PULSE_QUESTIONS } from "./src/data/council.js";
 
 const GROUPME_API = "https://api.groupme.com/v3";
 
