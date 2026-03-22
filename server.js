@@ -8,7 +8,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
-import { sendPulse, sendBishopricPulse, sendSMS, sendSMSChunked, pollInbox, parsePulseResponse, getGatewayEmail } from "./src/lib/gmail.js";
+import { sendPulse, sendBishopricPulse, sendToWardCouncil, sendToBishopric, parsePulseResponse, matchMember } from "./src/lib/groupme.js";
 import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda } from "./src/lib/claude.js";
 import { ALL_MEMBERS } from "./src/data/council.js";
 
@@ -288,89 +288,79 @@ app.delete("/api/users/:id", requireAdmin, (req, res) => {
 });
 
 // ─── TWILIO WEBHOOK ───────────────────────────────────────────────────────────
-// ─── GMAIL POLLING ────────────────────────────────────────────────────────────
-// Poll Gmail inbox every 5 minutes for new replies
-let lastPolled = Date.now() - 300000;
+// ─── GROUPME WEBHOOKS ─────────────────────────────────────────────────────────
+// GroupMe calls these URLs when anyone posts in the group
 
-async function processIncomingMessages() {
-  try {
-    const messages = await pollInbox(lastPolled);
-    lastPolled = Date.now();
-    const memberList = getMembers();
-    const week = getWeekKey();
+app.post("/webhook/groupme/wardcouncil", async (req, res) => {
+  res.sendStatus(200); // Respond immediately
+  const { name, text, sender_type } = req.body;
+  if (!text || sender_type === "bot") return; // Ignore bot's own messages
 
-    for (const msg of messages) {
-      // Match by phone number extracted from gateway email
-      const member = msg.phone ? memberList.find(m => m.phone === msg.phone) : null;
-      const isBishopric = member && BISHOPRIC_IDS.includes(member.id);
+  const memberList = getMembers();
+  const member = matchMember(name, memberList);
+  const week = getWeekKey();
+  const parsed = parsePulseResponse(text.trim());
 
-      if (isBishopric && msg.body) {
-        // AI route bishopric messages
-        try {
-          const routingResult = await routeSMS({ body: msg.body, fromName: member?.name || msg.from, currentWeek: week });
-          insert("bishopricInbox", {
-            id: randomUUID(), body: msg.body,
-            fromName: member?.name || msg.from, fromPhone: msg.phone || msg.from,
-            targetWeek: routingResult.targetWeek || week,
-            receivedAt: msg.date || new Date().toISOString(),
-            routed: false,
-            suggestedTarget: routingResult.destination,
-            gmailId: msg.gmailId,
-          });
-          console.log(`[GMAIL] Routed message from ${member?.name} to ${routingResult.destination}`);
-        } catch (err) {
-          console.error("[GMAIL ROUTING]", err.message);
-        }
-        continue;
-      }
+  const existing = getAll("pulseResponses").find(
+    r => r.memberId === (member?.id || name) && r.week === week
+  );
 
-      // Standard Ward Council pulse response
-      const parsed = parsePulseResponse(msg.body || "");
-      const existing = getAll("pulseResponses").find(
-        r => r.memberId === (member?.id || msg.from) && r.week === week
-      );
-
-      if (existing) {
-        update("pulseResponses", existing.id, {
-          q1: existing.q1 || parsed.q1,
-          q2: existing.q2 || parsed.q2,
-          q3: existing.q3 || parsed.q3,
-          raw: existing.raw + "\n---\n" + msg.body,
-          updatedAt: new Date().toISOString(),
-        });
-      } else {
-        insert("pulseResponses", {
-          id: randomUUID(),
-          memberId: member?.id || msg.from,
-          memberName: member?.name || msg.from,
-          org: member?.org || "Unknown",
-          orgKey: member?.orgKey || "unknown",
-          orgColor: member?.orgColor || "#888",
-          week, q1: parsed.q1, q2: parsed.q2, q3: parsed.q3,
-          raw: msg.body, receivedAt: msg.date || new Date().toISOString(),
-          gmailId: msg.gmailId,
-        });
-      }
-      console.log(`[GMAIL] Processed pulse response from ${member?.name || msg.from}`);
-    }
-  } catch (err) {
-    console.error("[GMAIL POLL]", err.message);
+  if (existing) {
+    update("pulseResponses", existing.id, {
+      q1: existing.q1 || parsed.q1,
+      q2: existing.q2 || parsed.q2,
+      q3: existing.q3 || parsed.q3,
+      raw: existing.raw + "\n---\n" + text.trim(),
+      updatedAt: new Date().toISOString(),
+    });
+  } else {
+    insert("pulseResponses", {
+      id: randomUUID(),
+      memberId: member?.id || name,
+      memberName: member?.name || name,
+      org: member?.org || "Unknown",
+      orgKey: member?.orgKey || "unknown",
+      orgColor: member?.orgColor || "#888",
+      week, q1: parsed.q1, q2: parsed.q2, q3: parsed.q3,
+      raw: text.trim(), receivedAt: new Date().toISOString(),
+    });
   }
-}
-
-// Poll every 5 minutes
-cron.schedule("*/5 * * * *", processIncomingMessages);
-
-// Manual poll endpoint
-app.post("/api/poll-inbox", async (req, res) => {
-  try {
-    await processIncomingMessages();
-    res.json({ ok: true, polledAt: new Date().toISOString() });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  console.log(`[GROUPME] Ward Council response from ${member?.name || name}`);
 });
 
+app.post("/webhook/groupme/bishopric", async (req, res) => {
+  res.sendStatus(200);
+  const { name, text, sender_type } = req.body;
+  if (!text || sender_type === "bot") return;
+
+  const memberList = getMembers();
+  const member = matchMember(name, memberList);
+  const week = getWeekKey();
+
+  // AI route bishopric messages
+  try {
+    const routingResult = await routeSMS({ body: text.trim(), fromName: member?.name || name, currentWeek: week });
+    insert("bishopricInbox", {
+      id: randomUUID(), body: text.trim(),
+      fromName: member?.name || name,
+      targetWeek: routingResult.targetWeek || week,
+      receivedAt: new Date().toISOString(),
+      routed: false,
+      suggestedTarget: routingResult.destination,
+    });
+    console.log(`[GROUPME] Bishopric message from ${member?.name || name} routed to ${routingResult.destination}`);
+  } catch (err) {
+    console.error("[GROUPME ROUTING]", err.message);
+    // Store unrouted so it shows in inbox
+    insert("bishopricInbox", {
+      id: randomUUID(), body: text.trim(),
+      fromName: member?.name || name,
+      targetWeek: week,
+      receivedAt: new Date().toISOString(),
+      routed: false,
+    });
+  }
+});
 
 
 // ─── PULSE API ─────────────────────────────────────────────────────────────────
@@ -382,37 +372,17 @@ app.get("/api/pulse", (req, res) => {
 });
 
 app.post("/api/pulse/send", async (req, res) => {
-  const { memberIds } = req.body;
-  const memberList = getMembers();
-  const targets = memberIds
-    ? memberList.filter((m) => memberIds.includes(m.id))
-    : memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
-
   const week = getWeekKey();
-  const results = [];
-
-  for (const member of targets) {
-    const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
-    try {
-      await sendPulse(member);
-      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
-    } catch (err) {
-      console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
-      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: false, error: err.message });
-    }
+  try {
+    await sendPulse();
+    insert("sentPulses", {
+      id: randomUUID(), week, sentAt: new Date().toISOString(), via: "groupme",
+    });
+    res.json({ sent: 1, total: 1, results: [{ memberName: "Ward Council Group", success: true, gatewayEmail: "GroupMe" }] });
+  } catch (err) {
+    console.error(`[GROUPME ERROR] ${err.message}`);
+    res.json({ sent: 0, total: 1, results: [{ memberName: "Ward Council Group", success: false, error: err.message, gatewayEmail: "GroupMe" }] });
   }
-
-  // Also log members skipped due to missing carrier
-  const skipped = memberList.filter(m => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
-  for (const m of skipped) {
-    results.push({ memberId: m.id, memberName: m.name, gatewayEmail: null, success: false, error: "No carrier set — skipped" });
-  }
-
-  insert("sentPulses", {
-    id: randomUUID(), week, sentAt: new Date().toISOString(),
-    memberIds: targets.map((m) => m.id),
-  });
-  res.json({ sent: results.filter(r => r.success).length, total: results.length, results });
 });
 
 app.post("/api/pulse/manual", (req, res) => {
@@ -512,27 +482,14 @@ app.post("/api/agendas/:id/send", async (req, res) => {
   ].filter(Boolean);
   const shortMsg = lines.join("\n");
 
-  const memberList = getMembers();
-  const targets = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
-  const skipped = memberList.filter((m) => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
-  const results = [];
-
-  for (const member of targets) {
-    const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
-    try {
-      await sendSMS(gatewayEmail, shortMsg, "Ward Council Agenda");
-      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
-    } catch (err) {
-      console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
-      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: false, error: err.message });
-    }
+  try {
+    await sendToWardCouncil(shortMsg);
+    update("agendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
+    res.json({ sent: 1, total: 1, results: [{ memberName: "Ward Council Group", success: true, gatewayEmail: "GroupMe" }] });
+  } catch (err) {
+    console.error(`[GROUPME ERROR] ${err.message}`);
+    res.json({ sent: 0, total: 1, results: [{ memberName: "Ward Council Group", success: false, error: err.message, gatewayEmail: "GroupMe" }] });
   }
-  for (const m of skipped) {
-    results.push({ memberId: m.id, memberName: m.name, gatewayEmail: null, success: false, error: "No carrier set — skipped" });
-  }
-
-  update("agendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
-  res.json({ sent: results.filter(r => r.success).length, total: results.length, results });
 });
 
 app.delete("/api/agendas/:id", (req, res) => {
@@ -683,25 +640,14 @@ app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
     `Full agenda: ${appUrl}`,
   ].filter(Boolean);
   const shortMsg = lines.join("\n");
-  const allBishopric = getBishopricMembers();
-  const targets = allBishopric.filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
-  const skipped = allBishopric.filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && !m.carrier);
-  const results = [];
-  for (const member of targets) {
-    const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
-    try {
-      await sendSMS(gatewayEmail, shortMsg, "Bishopric Meeting Agenda");
-      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: true });
-    } catch (err) {
-      console.error(`[GMAIL ERROR] ${member.name}: ${err.message}`);
-      results.push({ memberId: member.id, memberName: member.name, gatewayEmail, success: false, error: err.message });
-    }
+  try {
+    await sendToBishopric(shortMsg);
+    update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
+    res.json({ sent: 1, total: 1, results: [{ memberName: "Bishopric Group", success: true, gatewayEmail: "GroupMe" }] });
+  } catch (err) {
+    console.error(`[GROUPME ERROR] ${err.message}`);
+    res.json({ sent: 0, total: 1, results: [{ memberName: "Bishopric Group", success: false, error: err.message, gatewayEmail: "GroupMe" }] });
   }
-  for (const m of skipped) {
-    results.push({ memberId: m.id, memberName: m.name, gatewayEmail: null, success: false, error: "No carrier set — skipped" });
-  }
-  update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
-  res.json({ sent: results.filter(r => r.success).length, total: results.length, results });
 });
 
 app.delete("/api/bishopric/agendas/:id", (req, res) => {
@@ -951,36 +897,27 @@ app.get("/api/sent-pulses", (req, res) => res.json(getAll("sentPulses")));
 
 // ─── CRON: Send weekly pulse every Wednesday at 9am ───────────────────────────
 cron.schedule("0 9 * * 3", async () => {
-  console.log("[CRON] Sending weekly pulse...");
-  const targets = getMembers().filter(m => m.id !== "es" && m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
-  for (const member of targets) {
-    try {
-      await sendPulse(member);
-      console.log(`  ✓ Sent to ${member.name}`);
-    } catch (err) {
-      console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
-    }
+  console.log("[CRON] Sending weekly pulse to Ward Council group...");
+  try {
+    await sendPulse();
+    insert("sentPulses", {
+      id: randomUUID(), week: getWeekKey(),
+      sentAt: new Date().toISOString(), via: "groupme", auto: true,
+    });
+    console.log("[CRON] Ward Council pulse sent");
+  } catch (err) {
+    console.error(`[CRON] Pulse failed: ${err.message}`);
   }
-  insert("sentPulses", {
-    id: randomUUID(),
-    week: getWeekKey(),
-    sentAt: new Date().toISOString(),
-    memberIds: targets.map((m) => m.id),
-    auto: true,
-  });
 }, { timezone: "America/Denver" });
 
 // ─── CRON: Bishopric pulse every Thursday at 9am ──────────────────────────────
 cron.schedule("0 9 * * 4", async () => {
   console.log("[CRON] Sending bishopric pulse...");
-  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
-  for (const member of targets) {
-    try {
-      await sendBishopricPulse(member);
-      console.log(`  ✓ Bishopric pulse sent to ${member.name}`);
-    } catch (err) {
-      console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
-    }
+  try {
+    await sendBishopricPulse();
+    console.log("[CRON] Bishopric pulse sent");
+  } catch (err) {
+    console.error(`[CRON] Bishopric pulse failed: ${err.message}`);
   }
 }, { timezone: "America/Denver" });
 
@@ -1000,18 +937,13 @@ cron.schedule("0 8 * * 6", async () => {
     a.closingPrayer    ? `3. Closing Prayer - ${a.closingPrayer}`    : null,
     `Full agenda: ${appUrl}`,
   ].filter(Boolean);
-  const shortMsg = lines.join("\n");
-  const targets = getBishopricMembers().filter(m => m.phone && !m.phone.includes("xxxxxxxxxx") && m.carrier);
-  for (const member of targets) {
-    try {
-      const gatewayEmail = getGatewayEmail(member.phone, member.carrier);
-      await sendSMS(gatewayEmail, shortMsg, "Bishopric Meeting Agenda");
-    } catch (err) {
-      console.error(`  ✗ Failed for ${member.name}: ${err.message}`);
-    }
+  try {
+    await sendToBishopric(lines.join("\n"));
+    update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
+    console.log("[CRON] Bishopric agenda sent");
+  } catch (err) {
+    console.error(`[CRON] Bishopric agenda failed: ${err.message}`);
   }
-  update("bishopricAgendas", agenda.id, { status: "sent", sentAt: new Date().toISOString() });
-  console.log("[CRON] Bishopric agenda sent");
 }, { timezone: "America/Denver" });
 
 const PORT = process.env.PORT || 3001;
