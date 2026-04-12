@@ -263,17 +263,28 @@ export async function generateBishopricAgenda({ pulseResponses, goals, weekKey, 
     return avail[Math.floor(Math.random() * avail.length)];
   }
 
-  const assigned = [];
-  const spiritualThought = pickRandom(members, assigned);
-  assigned.push(spiritualThought?.id);
-  const openingPrayer = pickRandom(members, assigned);
-  assigned.push(openingPrayer?.id);
-  const closingPrayer = pickRandom(members, assigned);
+  const POOL = [
+    { id: "bishop", name: "Bishop" },
+    { id: "fc",     name: "First Counselor" },
+    { id: "sc",     name: "Second Counselor" },
+    { id: "wc",     name: "Ward Clerk" },
+    { id: "es",     name: "Executive Secretary" },
+  ];
+
+  const excluded = [];
+
+  const openingPrayerMember    = pickRandom(POOL, excluded);
+  excluded.push(openingPrayerMember.id);
+
+  const spiritualThoughtMember = pickRandom(POOL, excluded);
+  excluded.push(spiritualThoughtMember.id);
+
+  const closingPrayerMember    = pickRandom(POOL, excluded);
 
   const fixed = {
-    openingPrayer: openingPrayer?.name || "Bishopric Member",
-    spiritualThought: spiritualThought?.name || "Bishopric Member",
-    closingPrayer: closingPrayer?.name || "Bishopric Member",
+    openingPrayer:    openingPrayerMember.name,
+    spiritualThought: spiritualThoughtMember.name,
+    closingPrayer:    closingPrayerMember.name,
   };
 
   const pulseSummary = pulseResponses.map(r => `${r.memberName}: "${r.raw}"`).join("\n") || "No responses yet.";
