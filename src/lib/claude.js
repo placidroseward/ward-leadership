@@ -269,13 +269,13 @@ export async function generateBishopricAgenda({ pulseResponses, goals, weekKey, 
 
   const excluded = [];
 
-  const openingPrayerMember    = pickRandom(POOL, excluded);
+  const openingPrayerMember = pickRandom(POOL, excluded);
   excluded.push(openingPrayerMember.id);
 
   const spiritualThoughtMember = pickRandom(POOL, excluded);
   excluded.push(spiritualThoughtMember.id);
 
-  const closingPrayerMember    = pickRandom(POOL, excluded);
+  const closingPrayerMember = pickRandom(POOL, excluded);
 
   const fixed = {
     openingPrayer:    openingPrayerMember.name,
