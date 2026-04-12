@@ -263,13 +263,9 @@ export async function generateBishopricAgenda({ pulseResponses, goals, weekKey, 
     return avail[Math.floor(Math.random() * avail.length)];
   }
 
-  const POOL = [
-    { id: "bishop", name: "Bishop" },
-    { id: "fc",     name: "First Counselor" },
-    { id: "sc",     name: "Second Counselor" },
-    { id: "wc",     name: "Ward Clerk" },
-    { id: "es",     name: "Executive Secretary" },
-  ];
+// Build pool from passed-in members, filtered to bishopric + support roles
+  const BISHOPRIC_IDS = ["bishop", "fc", "sc", "wc", "es"];
+  const POOL = members.filter(m => BISHOPRIC_IDS.includes(m.id));
 
   const excluded = [];
 
