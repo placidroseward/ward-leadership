@@ -12,8 +12,6 @@ import WardCalendar from "./components/WardCalendar.jsx";
 
 const API = import.meta.env.VITE_API_URL || "";
 
-const BISHOPRIC_CALLINGS = ["Bishop", "First Counselor", "Second Counselor", "Executive Secretary", "Ward Clerk"];
-
 const TOP_NAV = [
   { id: "wardcouncil", label: "Ward Council", icon: "◈" },
   { id: "mission", label: "Mission Plan", icon: "✦" },
@@ -94,8 +92,9 @@ export default function App() {
 
   const canSeeBishopric = (u) => {
     if (!u) return false;
-    if (u.role === "admin") return true;
-    return BISHOPRIC_CALLINGS.includes(u.calling);
+    // Bishopric tab is gated on role. Admins also see it so they don't lock
+    // themselves out while managing the app.
+    return u.role === "bishopric" || u.role === "admin";
   };
 
   const handleTopTab = (id) => {

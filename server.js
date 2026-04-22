@@ -217,7 +217,7 @@ app.post("/api/users", requireAdmin, (req, res) => {
     id: randomUUID(),
     firstName, lastName: lastName || "", email: email.toLowerCase(),
     calling: calling || "", phone: phone || "",
-    role: role === "admin" ? "admin" : "user",
+    role: ["admin", "bishopric"].includes(role) ? role : "user",
     passwordHash: null, stayLoggedIn: false,
     createdAt: new Date().toISOString(),
   });
@@ -579,10 +579,16 @@ app.delete("/api/members/:id", (req, res) => {
 });
 
 // ─── BISHOPRIC API ────────────────────────────────────────────────────────────
-const BISHOPRIC_IDS = ["bishop", "fc", "sc", "es", "wc"];
-
+// Bishopric participants for agenda assignments are drawn from users whose
+// role === "bishopric". Returned in the {id, name} shape the agenda generator
+// expects.
 function getBishopricMembers() {
-  return getMembers().filter(m => BISHOPRIC_IDS.includes(m.id));
+  return getAll("users")
+    .filter(u => u.role === "bishopric")
+    .map(u => ({
+      id: u.id,
+      name: [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email,
+    }));
 }
 
 app.get("/api/bishopric/agendas", (req, res) => {

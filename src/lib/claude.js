@@ -257,30 +257,26 @@ Return only a valid JSON array:
 }
 
 export async function generateBishopricAgenda({ pulseResponses, goals, weekKey, members = [], notesText = "", inboxItems = [] }) {
-  function pickRandom(pool, exclude = []) {
-    const avail = pool.filter(m => !exclude.includes(m.id));
-    if (avail.length === 0) return pool[0];
+  // Pool comes pre-filtered from the server (users with role === "bishopric").
+  // Pick three distinct members at random; if the pool is too small, leave
+  // the remaining slots "Unassigned" rather than assigning the same person twice.
+  const POOL = Array.isArray(members) ? members : [];
+
+  function pickUnique(pool, excluded) {
+    const avail = pool.filter(m => !excluded.includes(m.id));
+    if (avail.length === 0) return null;
     return avail[Math.floor(Math.random() * avail.length)];
   }
 
-// Build pool from passed-in members, filtered to bishopric + support roles
-  const BISHOPRIC_IDS = ["bishop", "fc", "sc", "wc", "es"];
-  const POOL = members.filter(m => BISHOPRIC_IDS.includes(m.id));
-
   const excluded = [];
-
-  const openingPrayerMember = pickRandom(POOL, excluded);
-  excluded.push(openingPrayerMember.id);
-
-  const spiritualThoughtMember = pickRandom(POOL, excluded);
-  excluded.push(spiritualThoughtMember.id);
-
-  const closingPrayerMember = pickRandom(POOL, excluded);
+  const opening  = pickUnique(POOL, excluded); if (opening)  excluded.push(opening.id);
+  const thought  = pickUnique(POOL, excluded); if (thought)  excluded.push(thought.id);
+  const closing  = pickUnique(POOL, excluded); if (closing)  excluded.push(closing.id);
 
   const fixed = {
-    openingPrayer:    openingPrayerMember.name,
-    spiritualThought: spiritualThoughtMember.name,
-    closingPrayer:    closingPrayerMember.name,
+    openingPrayer:    opening ? opening.name : "Unassigned",
+    spiritualThought: thought ? thought.name : "Unassigned",
+    closingPrayer:    closing ? closing.name : "Unassigned",
   };
 
   const pulseSummary = pulseResponses.map(r => `${r.memberName}: "${r.raw}"`).join("\n") || "No responses yet.";

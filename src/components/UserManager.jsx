@@ -119,6 +119,7 @@ function EditUserModal({ user, api, currentUser, onSave, onClose }) {
               <select className="input" value={form.role} onChange={e => f("role", e.target.value)}
                 disabled={user.id === currentUser.id}>
                 <option value="user">User</option>
+                <option value="bishopric">Bishopric</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -256,6 +257,7 @@ export default function UserManager({ api, currentUser }) {
             <label className="label">Role</label>
             <select className="input" value={form.role} onChange={e => f("role", e.target.value)}>
               <option value="user">User</option>
+              <option value="bishopric">Bishopric</option>
               <option value="admin">Admin</option>
             </select>
           </div>
