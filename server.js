@@ -9,8 +9,16 @@ import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
 import { sendPulse, sendBishopricPulse, sendToWardCouncil, sendToBishopric, parsePulseResponse, matchMember } from "./groupme.js";
-import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda } from "./src/lib/claude.js";
-import { ALL_MEMBERS } from "./src/data/council.js";
+import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda, routeSMS } from "./src/lib/claude.js";
+import { ALL_MEMBERS, ORG_CATALOG } from "./src/data/council.js";
+
+// Resolve an orgKey to its canonical { orgKey, org, orgColor } tuple.
+// Falls back to empty strings if the key isn't in the catalog.
+function resolveOrg(orgKey) {
+  const hit = ORG_CATALOG.find(o => o.key === orgKey);
+  if (!hit) return { orgKey: "", org: "", orgColor: "" };
+  return { orgKey: hit.key, org: hit.name, orgColor: hit.color };
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,28 +26,87 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dataDir = join(__dirname, "data");
 if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
-// Seed council members directly from council.js if DB is empty
+// One-shot migration: consolidate the legacy councilMembers collection into
+// the users collection. Matches by phone; creates a placeholder user for any
+// council member that has no matching user account. Runs on every startup
+// but is idempotent — once councilMembers is empty, it does nothing.
 try {
   const dbPath = join(__dirname, "data/db.json");
   let db = { pulseResponses: [], agendas: [], goals: [], sentPulses: [], councilMembers: [], minutes: [], users: [], missionPlan: [], bishopricAgendas: [], bishopricPulse: [], bishopricNotes: [], bishopricInbox: [], bishopricGoals: [], calendarEvents: [] };
   if (existsSync(dbPath)) {
     db = JSON.parse(readFileSync(dbPath, "utf8"));
   }
-  if (!db.councilMembers || db.councilMembers.length === 0) {
-    db.councilMembers = ALL_MEMBERS;
+  if (!Array.isArray(db.users)) db.users = [];
+
+  const legacy = Array.isArray(db.councilMembers) ? db.councilMembers : [];
+  if (legacy.length > 0) {
+    let merged = 0, created = 0;
+    for (const m of legacy) {
+      const orgInfo = resolveOrg(m.orgKey);
+      const parts = (m.name || "").trim().split(/\s+/);
+      const first = parts[0] || "Member";
+      const last  = parts.slice(1).join(" ");
+
+      // Match existing user by phone (canonical), then fall back to name.
+      let user = m.phone ? db.users.find(u => u.phone && u.phone === m.phone) : null;
+      if (!user) {
+        user = db.users.find(u => {
+          const full = [u.firstName, u.lastName].filter(Boolean).join(" ").toLowerCase();
+          return full && full === (m.name || "").toLowerCase();
+        });
+      }
+
+      if (user) {
+        Object.assign(user, {
+          phone: user.phone || m.phone || "",
+          carrier: user.carrier || m.carrier || "",
+          calling: user.calling || m.role || "",
+          isWardCouncil: true,
+          orgKey: orgInfo.orgKey, org: orgInfo.org, orgColor: orgInfo.orgColor,
+        });
+        merged++;
+      } else {
+        db.users.push({
+          id: randomUUID(),
+          firstName: first, lastName: last,
+          // Placeholder email — admin can update in User Management before login.
+          email: `placeholder-${(m.id || randomUUID()).toString().toLowerCase()}@placid-rose.local`,
+          calling: m.role || "",
+          phone: m.phone || "", carrier: m.carrier || "",
+          role: "user",
+          isWardCouncil: true,
+          orgKey: orgInfo.orgKey, org: orgInfo.org, orgColor: orgInfo.orgColor,
+          passwordHash: null, stayLoggedIn: false,
+          createdAt: new Date().toISOString(),
+        });
+        created++;
+      }
+    }
+    db.councilMembers = [];
     writeFileSync(dbPath, JSON.stringify(db, null, 2));
-    console.log(`[INIT] Seeded ${ALL_MEMBERS.length} council members from council.js`);
-  } else {
-    console.log(`[INIT] DB already has ${db.councilMembers.length} council members`);
+    console.log(`[MIGRATE] Consolidated councilMembers → users (${merged} merged, ${created} created). councilMembers cleared.`);
   }
 } catch (err) {
-  console.error("[INIT] Seeding error:", err.message);
+  console.error("[MIGRATE] Error:", err.message);
 }
 
-// Helper: get current members from DB, falling back to council.js
+// Ward-council members are users where isWardCouncil === true. This is the
+// single source of truth used by pulse routing, agenda generation, and the
+// manual-pulse dropdown. Returned in the legacy member shape so callers that
+// expect id/name/org/orgKey/orgColor/phone/carrier keep working unchanged.
 function getMembers() {
-  const dbMembers = getAll("councilMembers");
-  return dbMembers.length > 0 ? dbMembers : ALL_MEMBERS;
+  return getAll("users")
+    .filter(u => u.isWardCouncil)
+    .map(u => ({
+      id: u.id,
+      name: [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email,
+      role: u.calling || "",
+      phone: u.phone || "",
+      carrier: u.carrier || "",
+      orgKey: u.orgKey || "",
+      org: u.org || "",
+      orgColor: u.orgColor || "#888",
+    }));
 }
 
 const app = express();
@@ -208,58 +275,51 @@ app.get("/api/users", requireAdmin, (req, res) => {
   res.json(getAll("users").map(safeUser));
 });
 
+// Canonical list of ward-council organizations (for the User Management dropdown).
+app.get("/api/orgs", (req, res) => {
+  res.json(ORG_CATALOG);
+});
+
 app.post("/api/users", requireAdmin, (req, res) => {
-  const { firstName, lastName, email, calling, phone, role } = req.body;
+  const { firstName, lastName, email, calling, phone, role, carrier,
+          isWardCouncil, orgKey } = req.body;
   if (!email || !firstName) return res.status(400).json({ error: "First name and email required" });
   const existing = getAll("users").find(u => u.email.toLowerCase() === email.toLowerCase());
   if (existing) return res.status(409).json({ error: "A user with that email already exists" });
+  const orgInfo = isWardCouncil ? resolveOrg(orgKey) : { orgKey: "", org: "", orgColor: "" };
   const user = insert("users", {
     id: randomUUID(),
     firstName, lastName: lastName || "", email: email.toLowerCase(),
-    calling: calling || "", phone: phone || "",
+    calling: calling || "", phone: phone || "", carrier: carrier || "",
     role: ["admin", "bishopric"].includes(role) ? role : "user",
+    isWardCouncil: !!isWardCouncil,
+    orgKey: orgInfo.orgKey, org: orgInfo.org, orgColor: orgInfo.orgColor,
     passwordHash: null, stayLoggedIn: false,
     createdAt: new Date().toISOString(),
   });
   res.json(safeUser(user));
 });
 
-// Sync shared fields between users and councilMembers collections
-function syncUserToMember(user) {
-  if (!user.phone) return;
-  const members = getAll("councilMembers");
-  const match = members.find(m => m.phone === user.phone);
-  if (match) {
-    const changes = {};
-    if (user.carrier !== undefined) changes.carrier = user.carrier;
-    if (user.firstName || user.lastName) changes.name = [user.firstName, user.lastName].filter(Boolean).join(" ");
-    if (Object.keys(changes).length > 0) update("councilMembers", match.id, changes);
-  }
-}
-
-function syncMemberToUser(member) {
-  if (!member.phone) return;
-  const users = getAll("users");
-  const match = users.find(u => u.phone === member.phone);
-  if (match) {
-    const changes = {};
-    if (member.carrier !== undefined) changes.carrier = member.carrier;
-    if (member.name) {
-      const parts = member.name.split(" ");
-      changes.firstName = parts[0] || match.firstName;
-      changes.lastName = parts.slice(1).join(" ") || match.lastName;
-    }
-    if (Object.keys(changes).length > 0) update("users", match.id, changes);
-  }
-}
+// NOTE: The legacy councilMembers↔users sync helpers were removed when the
+// two collections were consolidated. The user record is now the single source
+// of truth for ward-council membership (see getMembers above).
 
 app.put("/api/users/:id", (req, res) => {
   const existing = getById("users", req.params.id);
   if (!existing) return res.status(404).json({ error: "Not found" });
   const { passwordHash, ...allowed } = req.body;
+  // When ward-council membership or org changes, derive org/orgColor from the
+  // canonical catalog so UI-supplied values stay consistent.
+  if ("isWardCouncil" in allowed || "orgKey" in allowed) {
+    const willBeOnCouncil = "isWardCouncil" in allowed ? !!allowed.isWardCouncil : !!existing.isWardCouncil;
+    const keyToResolve   = "orgKey" in allowed ? allowed.orgKey : existing.orgKey;
+    const orgInfo = willBeOnCouncil ? resolveOrg(keyToResolve) : { orgKey: "", org: "", orgColor: "" };
+    allowed.isWardCouncil = willBeOnCouncil;
+    allowed.orgKey   = orgInfo.orgKey;
+    allowed.org      = orgInfo.org;
+    allowed.orgColor = orgInfo.orgColor;
+  }
   const updated = update("users", req.params.id, allowed);
-  // Sync phone/carrier/name changes to matching council member
-  syncUserToMember(updated);
   res.json(safeUser(updated));
 });
 
@@ -548,34 +608,12 @@ app.post("/api/goals/suggest", async (req, res) => {
   }
 });
 
-// ─── COUNCIL MEMBERS API ───────────────────────────────────────────────────────
+// ─── COUNCIL MEMBERS (read-only alias) ────────────────────────────────────────
+// Ward council members are now managed entirely through the Users API — this
+// endpoint stays for existing consumers (e.g., the manual-pulse dropdown) that
+// just need to read the current roster.
 app.get("/api/members", (req, res) => {
   res.json(getMembers());
-});
-
-app.post("/api/members", (req, res) => {
-  const { name, role, phone, orgKey, org, orgColor } = req.body;
-  if (!name || !orgKey) return res.status(400).json({ error: "name and orgKey required" });
-  const member = insert("councilMembers", {
-    id: randomUUID(),
-    name, role, phone, orgKey,
-    org: org || orgKey,
-    orgColor: orgColor || "#888",
-  });
-  res.json(member);
-});
-
-app.put("/api/members/:id", (req, res) => {
-  const updated = update("councilMembers", req.params.id, req.body);
-  if (!updated) return res.status(404).json({ error: "Not found" });
-  // Sync phone/carrier/name changes to matching user
-  syncMemberToUser(updated);
-  res.json(updated);
-});
-
-app.delete("/api/members/:id", (req, res) => {
-  remove("councilMembers", req.params.id);
-  res.json({ ok: true });
 });
 
 // ─── BISHOPRIC API ────────────────────────────────────────────────────────────

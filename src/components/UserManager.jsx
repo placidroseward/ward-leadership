@@ -1,27 +1,15 @@
 import { useState, useEffect } from "react";
 
-function EditUserModal({ user, api, currentUser, onSave, onClose }) {
-  const CARRIERS = [
-    { value: "", label: "— Select carrier —" },
-    { value: "att", label: "AT&T" },
-    { value: "boost", label: "Boost Mobile" },
-    { value: "cricket", label: "Cricket Wireless" },
-    { value: "metro", label: "Metro by T-Mobile" },
-    { value: "straighttalk", label: "Straight Talk" },
-    { value: "tmobile", label: "T-Mobile" },
-    { value: "uscellular", label: "US Cellular" },
-    { value: "verizon", label: "Verizon" },
-    { value: "xfinity", label: "Xfinity Mobile" },
-  ];
-
+function EditUserModal({ user, api, currentUser, orgs, onSave, onClose }) {
   const [form, setForm] = useState({
     firstName: user.firstName || "",
     lastName: user.lastName || "",
     email: user.email || "",
     calling: user.calling || "",
     phone: user.phone || "",
-    carrier: user.carrier || "",
     role: user.role || "user",
+    isWardCouncil: !!user.isWardCouncil,
+    orgKey: user.orgKey || "",
   });
   const [msg, setMsg] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -107,14 +95,6 @@ function EditUserModal({ user, api, currentUser, onSave, onClose }) {
               <input className="input" value={form.phone} onChange={e => f("phone", e.target.value)} />
             </div>
             <div>
-              <label className="label">Cell Carrier</label>
-              <select className="input" value={form.carrier || ""} onChange={e => f("carrier", e.target.value)}>
-                {CARRIERS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="two-col" style={{ marginBottom: 16 }}>
-            <div>
               <label className="label">Role</label>
               <select className="input" value={form.role} onChange={e => f("role", e.target.value)}
                 disabled={user.id === currentUser.id}>
@@ -124,6 +104,26 @@ function EditUserModal({ user, api, currentUser, onSave, onClose }) {
               </select>
             </div>
           </div>
+
+          <div className="field">
+            <label className="label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!form.isWardCouncil}
+                onChange={e => f("isWardCouncil", e.target.checked)} />
+              Member of Ward Council
+            </label>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+              Grants access to the Ward Council and Mission Plan tabs, and adds this user to the pulse + agenda roster.
+            </div>
+          </div>
+          {form.isWardCouncil && (
+            <div className="field">
+              <label className="label">Organization</label>
+              <select className="input" value={form.orgKey || ""} onChange={e => f("orgKey", e.target.value)}>
+                <option value="">— Select organization —</option>
+                {orgs.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
+              </select>
+            </div>
+          )}
 
           {msg && (
             <div style={{
@@ -152,20 +152,13 @@ function EditUserModal({ user, api, currentUser, onSave, onClose }) {
 
 export default function UserManager({ api, currentUser }) {
   const [users, setUsers] = useState([]);
-  const CARRIERS = [
-    { value: "", label: "— Select carrier —" },
-    { value: "att", label: "AT&T" },
-    { value: "boost", label: "Boost Mobile" },
-    { value: "cricket", label: "Cricket Wireless" },
-    { value: "metro", label: "Metro by T-Mobile" },
-    { value: "straighttalk", label: "Straight Talk" },
-    { value: "tmobile", label: "T-Mobile" },
-    { value: "uscellular", label: "US Cellular" },
-    { value: "verizon", label: "Verizon" },
-    { value: "xfinity", label: "Xfinity Mobile" },
-  ];
+  const [orgs, setOrgs] = useState([]);
 
-  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", calling: "", phone: "", carrier: "", role: "user" });
+  const [form, setForm] = useState({
+    firstName: "", lastName: "", email: "", calling: "",
+    phone: "", role: "user",
+    isWardCouncil: false, orgKey: "",
+  });
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState(null);
@@ -175,7 +168,12 @@ export default function UserManager({ api, currentUser }) {
       .then(r => r.json()).then(data => { setUsers(data); setLoading(false); }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetch(`${api}/api/orgs`, { headers: { "x-user-id": currentUser.id } })
+      .then(r => r.json()).then(data => { if (Array.isArray(data)) setOrgs(data); })
+      .catch(() => {});
+  }, []);
 
   const add = async () => {
     if (!form.email || !form.firstName) return setMsg("First name and email are required");
@@ -187,7 +185,11 @@ export default function UserManager({ api, currentUser }) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setForm({ firstName: "", lastName: "", email: "", calling: "", phone: "", carrier: "", role: "user" });
+      setForm({
+        firstName: "", lastName: "", email: "", calling: "",
+        phone: "", role: "user",
+        isWardCouncil: false, orgKey: "",
+      });
       setMsg("User added — they can set their password on first login");
       setTimeout(() => setMsg(null), 3000);
       load();
@@ -207,7 +209,7 @@ export default function UserManager({ api, currentUser }) {
     <div style={{ padding: 24, maxWidth: 700 }}>
       {editingUser && (
         <EditUserModal
-          user={editingUser} api={api} currentUser={currentUser}
+          user={editingUser} api={api} currentUser={currentUser} orgs={orgs}
           onSave={load} onClose={() => setEditingUser(null)}
         />
       )}
@@ -246,14 +248,6 @@ export default function UserManager({ api, currentUser }) {
             <input className="input" value={form.phone} onChange={e => f("phone", e.target.value)} placeholder="+1xxxxxxxxxx" />
           </div>
           <div>
-            <label className="label">Cell Carrier</label>
-            <select className="input" value={form.carrier || ""} onChange={e => f("carrier", e.target.value)}>
-              {CARRIERS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="two-col" style={{ marginBottom: 12 }}>
-          <div>
             <label className="label">Role</label>
             <select className="input" value={form.role} onChange={e => f("role", e.target.value)}>
               <option value="user">User</option>
@@ -262,6 +256,27 @@ export default function UserManager({ api, currentUser }) {
             </select>
           </div>
         </div>
+
+        <div className="field" style={{ marginBottom: 12 }}>
+          <label className="label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input type="checkbox" checked={!!form.isWardCouncil}
+              onChange={e => f("isWardCouncil", e.target.checked)} />
+            Member of Ward Council
+          </label>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+            Grants access to the Ward Council and Mission Plan tabs, and adds this user to the pulse + agenda roster.
+          </div>
+        </div>
+        {form.isWardCouncil && (
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label className="label">Organization</label>
+            <select className="input" value={form.orgKey || ""} onChange={e => f("orgKey", e.target.value)}>
+              <option value="">— Select organization —</option>
+              {orgs.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
+            </select>
+          </div>
+        )}
+
         {msg && <div style={{ fontSize: 11, color: msg.startsWith("Error") ? "var(--danger)" : "var(--success)", marginBottom: 10 }}>{msg}</div>}
         <button className="btn btn-gold" onClick={add}>Add User</button>
       </div>
@@ -294,22 +309,27 @@ export default function UserManager({ api, currentUser }) {
             </div>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{u.email}</div>
             {u.calling && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{u.calling}</div>}
+            {u.isWardCouncil && (
+              <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                <span style={{
+                  display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                  background: u.orgColor || "var(--text-muted)", marginRight: 6, verticalAlign: "middle",
+                }} />
+                <span style={{ verticalAlign: "middle" }}>Ward Council{u.org ? ` · ${u.org}` : ""}</span>
+              </div>
+            )}
             {u.phone && (
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, fontFamily: "var(--font-mono)" }}>
                 {u.phone}
-                {u.carrier
-                  ? <span style={{ marginLeft: 6, color: "var(--success)" }}>✓ {u.carrier}</span>
-                  : <span style={{ marginLeft: 6, color: "var(--warning)" }}>⚠ no carrier</span>
-                }
               </div>
             )}
           </div>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{
               fontSize: 10, padding: "2px 8px", borderRadius: 2,
-              background: u.role === "admin" ? "rgba(201,168,76,0.15)" : "var(--surface3)",
-              color: u.role === "admin" ? "var(--gold)" : "var(--text-muted)",
-              border: `1px solid ${u.role === "admin" ? "var(--gold-dim)" : "var(--border)"}`,
+              background: u.role === "admin" ? "rgba(201,168,76,0.15)" : u.role === "bishopric" ? "rgba(201,168,76,0.08)" : "var(--surface3)",
+              color: u.role === "admin" ? "var(--gold)" : u.role === "bishopric" ? "var(--gold)" : "var(--text-muted)",
+              border: `1px solid ${u.role === "admin" ? "var(--gold-dim)" : u.role === "bishopric" ? "var(--gold-dim)" : "var(--border)"}`,
               letterSpacing: "0.1em",
             }}>
               {u.role || "user"}

@@ -72,6 +72,15 @@ export const ALL_MEMBERS = Object.values(ORGANIZATIONS).flatMap((org) =>
   org.members.map((m) => ({ ...m, org: org.name, orgKey: Object.keys(ORGANIZATIONS).find(k => ORGANIZATIONS[k] === org), orgColor: org.color }))
 );
 
+// Catalog of ward-council organizations — used by the User Management UI as
+// the dropdown source when marking a user as a Member of Ward Council. Every
+// flagged user should have exactly one org from this list.
+export const ORG_CATALOG = Object.entries(ORGANIZATIONS).map(([key, o]) => ({
+  key,
+  name: o.name,
+  color: o.color,
+}));
+
 // The three pulse questions sent every Wednesday
 export const PULSE_QUESTIONS = [
   "1️⃣ Are there any members in your organization who need help, a visit, or special attention this week?",

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import PulseManager from "./components/PulseManager.jsx";
 import AgendaBuilder from "./components/AgendaBuilder.jsx";
 import GoalsTracker from "./components/GoalsTracker.jsx";
-import CouncilManager from "./components/CouncilManager.jsx";
 import UserProfile from "./components/UserProfile.jsx";
 import UserManager from "./components/UserManager.jsx";
 import Login from "./components/Login.jsx";
@@ -12,12 +11,13 @@ import WardCalendar from "./components/WardCalendar.jsx";
 
 const API = import.meta.env.VITE_API_URL || "";
 
+// Top nav. Entries with `councilOnly` are shown only to Ward Council members
+// (and admins). `restricted` is the Bishopric-only flag.
 const TOP_NAV = [
-  { id: "wardcouncil", label: "Ward Council", icon: "◈" },
-  { id: "mission", label: "Mission Plan", icon: "✦" },
-  { id: "bishopric", label: "Bishopric", icon: "◉", restricted: true },
-  { id: "calendar", label: "Ward Calendar", icon: "◎" },
-  { id: "council", label: "Council Members", icon: "◇" },
+  { id: "wardcouncil", label: "Ward Council",  icon: "◈", councilOnly: true },
+  { id: "mission",    label: "Mission Plan",  icon: "✦", councilOnly: true },
+  { id: "bishopric",  label: "Bishopric",     icon: "◉", restricted: true },
+  { id: "calendar",   label: "Ward Calendar", icon: "◎" },
 ];
 
 const SUBTABS = {
@@ -59,6 +59,28 @@ export default function App() {
     if (user) fetch(`${API}/api/week`).then(r => r.json()).then(d => setWeek(d.week)).catch(() => {});
   }, [user]);
 
+  // If the currently-selected top tab isn't visible to this user (e.g. a
+  // non-council user landed on the "wardcouncil" default), fall back to the
+  // first tab they can see. Declared here, above the early returns, to satisfy
+  // the rules of hooks.
+  useEffect(() => {
+    if (!user) return;
+    const isCouncil   = user.role === "admin" || !!user.isWardCouncil;
+    const isBishopric = user.role === "admin" || user.role === "bishopric";
+    const visible = TOP_NAV.filter(n => {
+      if (n.restricted  && !isBishopric) return false;
+      if (n.councilOnly && !isCouncil)   return false;
+      return true;
+    });
+    if (!visible.find(n => n.id === topTab) && visible.length > 0) {
+      const next = visible[0];
+      setTopTab(next.id);
+      const subs = SUBTABS[next.id];
+      if (subs) setSubTab(subs[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const handleLogin = (u, stay) => {
     const userData = { ...u, stayLoggedIn: stay };
     setUser(userData);
@@ -97,6 +119,13 @@ export default function App() {
     return u.role === "bishopric" || u.role === "admin";
   };
 
+  const canSeeWardCouncil = (u) => {
+    if (!u) return false;
+    // Ward Council + Mission Plan are gated on the isWardCouncil flag.
+    // Admins see them regardless so they can administer the app.
+    return u.role === "admin" || !!u.isWardCouncil;
+  };
+
   const handleTopTab = (id) => {
     setTopTab(id);
     const subs = SUBTABS[id];
@@ -113,7 +142,11 @@ export default function App() {
     </>
   );
 
-  const visibleTopNav = TOP_NAV.filter(n => !n.restricted || canSeeBishopric(user));
+  const visibleTopNav = TOP_NAV.filter(n => {
+    if (n.restricted  && !canSeeBishopric(user))  return false;
+    if (n.councilOnly && !canSeeWardCouncil(user)) return false;
+    return true;
+  });
   const currentSubtabs = SUBTABS[topTab] || [];
 
   return (
@@ -207,9 +240,6 @@ export default function App() {
 
               {/* Ward Calendar */}
               {topTab === "calendar" && <WardCalendar api={API} />}
-
-              {/* Council Members */}
-              {topTab === "council" && <CouncilManager api={API} />}
             </main>
           </>
         )}
