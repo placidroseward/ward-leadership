@@ -205,10 +205,13 @@ function safeUser(u) {
   return rest;
 }
 
-// Seed initial admin user (Executive Secretary) if no users exist
+// Seed initial admin user (Executive Secretary) if no users exist.
+// The seeded admin is also flagged as a Ward Council member so they land on
+// the pulse/agenda roster by default.
 try {
   const existing = getAll("users");
   if (existing.length === 0) {
+    const adminOrg = resolveOrg("exec_secretary");
     insert("users", {
       id: "admin-es",
       firstName: "Tyler",
@@ -217,6 +220,8 @@ try {
       calling: "Executive Secretary",
       phone: "+18013802475",
       role: "admin",
+      isWardCouncil: true,
+      orgKey: adminOrg.orgKey, org: adminOrg.org, orgColor: adminOrg.orgColor,
       passwordHash: null,
       stayLoggedIn: false,
       createdAt: new Date().toISOString(),
@@ -225,6 +230,32 @@ try {
   }
 } catch (err) {
   console.error("[INIT] User seeding error:", err.message);
+}
+
+// Idempotent upgrade: ensure the Executive Secretary account (matched by the
+// seeded phone number) is an admin and a Ward Council member, in case an
+// older deploy created the record before these fields existed. Matches by
+// phone so it works regardless of which email was used to sign up.
+try {
+  const EXEC_PHONE = "+18013802475";
+  const existing = getAll("users").find(u => u.phone === EXEC_PHONE);
+  if (existing) {
+    const needsUpgrade =
+      existing.role !== "admin" ||
+      !existing.isWardCouncil ||
+      existing.orgKey !== "exec_secretary";
+    if (needsUpgrade) {
+      const execOrg = resolveOrg("exec_secretary");
+      update("users", existing.id, {
+        role: "admin",
+        isWardCouncil: true,
+        orgKey: execOrg.orgKey, org: execOrg.org, orgColor: execOrg.orgColor,
+      });
+      console.log(`[INIT] Restored admin + ward-council rights for ${existing.email}`);
+    }
+  }
+} catch (err) {
+  console.error("[INIT] Admin restore error:", err.message);
 }
 
 // ─── AUTH ROUTES ──────────────────────────────────────────────────────────────
