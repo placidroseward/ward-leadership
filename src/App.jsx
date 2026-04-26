@@ -7,6 +7,7 @@ import UserManager from "./components/UserManager.jsx";
 import Login from "./components/Login.jsx";
 import MissionPlan from "./components/MissionPlan.jsx";
 import BishopricAgendaBuilder from "./components/BishopricAgendaBuilder.jsx";
+import SacramentProgram from "./components/SacramentProgram.jsx";
 import WardCalendar from "./components/WardCalendar.jsx";
 
 const API = import.meta.env.VITE_API_URL || "";
@@ -28,6 +29,7 @@ const SUBTABS = {
   ],
   bishopric: [
     { id: "bishopric-agenda", label: "Agenda Builder" },
+    { id: "sacrament-program", label: "Sacrament Program" },
   ],
 };
 
@@ -237,6 +239,7 @@ export default function App() {
 
               {/* Bishopric subtabs */}
               {topTab === "bishopric" && subTab === "bishopric-agenda" && <BishopricAgendaBuilder api={API} week={week} />}
+              {topTab === "bishopric" && subTab === "sacrament-program" && <SacramentProgram />}
 
               {/* Ward Calendar */}
               {topTab === "calendar" && <WardCalendar api={API} />}

@@ -664,6 +664,19 @@ app.get("/api/bishopric/agendas", (req, res) => {
   res.json(getAll("bishopricAgendas").sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt)));
 });
 
+app.post("/api/bishopric/agendas/create", (req, res) => {
+  const { week, title, status, agendaData } = req.body;
+  const saved = insert("bishopricAgendas", {
+    id: randomUUID(),
+    week: week || getWeekKey(),
+    title: title || `Bishopric Meeting — ${week || getWeekKey()}`,
+    status: status || "draft",
+    agendaData: agendaData || {},
+    generatedAt: new Date().toISOString(),
+  });
+  res.json(saved);
+});
+
 app.post("/api/bishopric/agendas/generate", async (req, res) => {
   const week = req.body.week || getWeekKey();
   const bishopricMembers = getBishopricMembers();
