@@ -45,6 +45,7 @@ export default function App() {
   const [oneNoteUrl, setOneNoteUrl] = useState(() => localStorage.getItem("bishopric_onenote_url") || "");
   const [editingOneNote, setEditingOneNote] = useState(false);
   const [oneNoteDraft, setOneNoteDraft] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("wc_user");
@@ -135,6 +136,7 @@ export default function App() {
     setTopTab(id);
     const subs = SUBTABS[id];
     if (subs) setSubTab(subs[0].id);
+    setMobileMenuOpen(false);
   };
 
   const lm = lightMode;
@@ -170,17 +172,26 @@ export default function App() {
 
       <div className="app">
         <header className="header">
-          <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Hamburger — mobile only */}
+            <button
+              className="btn btn-ghost hamburger-btn"
+              onClick={() => setMobileMenuOpen(o => !o)}
+              aria-label="Menu"
+              style={{ fontSize: 18, padding: "4px 8px" }}
+            >
+              {mobileMenuOpen ? "✕" : "☰"}
+            </button>
             <span className="header-title">
               Placid Rose Ward Council
               <span>Executive Dashboard</span>
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div className="header-week">{week ? `Current: ${week}` : "Loading..."}</div>
+            <div className="header-week hide-mobile">{week ? `Current: ${week}` : "Loading..."}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {user.role === "admin" && (
-                <button className="btn btn-ghost" style={{ fontSize: 10, padding: "4px 10px" }}
+                <button className="btn btn-ghost hide-mobile" style={{ fontSize: 10, padding: "4px 10px" }}
                   onClick={() => setShowUsers(!showUsers)}>
                   ◇ Users
                 </button>
@@ -193,12 +204,36 @@ export default function App() {
               }} title="My Profile">
                 {(user.firstName?.[0] || user.email?.[0] || "?").toUpperCase()}
               </button>
-              <button className="btn btn-ghost" style={{ fontSize: 10, padding: "4px 10px" }} onClick={handleLogout}>
+              <button className="btn btn-ghost hide-mobile" style={{ fontSize: 10, padding: "4px 10px" }} onClick={handleLogout}>
                 Sign Out
               </button>
             </div>
           </div>
         </header>
+
+        {/* Mobile slide-down menu */}
+        {mobileMenuOpen && (
+          <div className="mobile-menu">
+            <div className="label" style={{ padding: "8px 16px 4px" }}>Navigation</div>
+            {visibleTopNav.map(n => (
+              <button key={n.id}
+                className={`mobile-menu-btn${topTab === n.id ? " active" : ""}`}
+                onClick={() => handleTopTab(n.id)}>
+                <span>{n.icon}</span> {n.label}
+              </button>
+            ))}
+            <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
+            {week && <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)" }}>Week: {week}</div>}
+            {user.role === "admin" && (
+              <button className="mobile-menu-btn" onClick={() => { setShowUsers(!showUsers); setMobileMenuOpen(false); }}>
+                ◇ User Management
+              </button>
+            )}
+            <button className="mobile-menu-btn" onClick={() => { handleLogout(); setMobileMenuOpen(false); }}>
+              ⎋ Sign Out
+            </button>
+          </div>
+        )}
 
         {showUsers && user.role === "admin" ? (
           <div className="main scroll" style={{ padding: 0 }}>
@@ -233,7 +268,7 @@ export default function App() {
 
             {/* OneNote banner — Bishopric tab only */}
             {topTab === "bishopric" && (
-              <div style={{
+              <div className="onenote-banner" style={{
                 display: "flex", alignItems: "center", gap: 12,
                 padding: "8px 32px", borderBottom: "1px solid var(--border)",
                 background: "var(--surface)", flexShrink: 0,
@@ -306,6 +341,19 @@ export default function App() {
               {topTab === "calendar" && <WardCalendar api={API} />}
             </main>
           </>
+        )}
+        {/* Bottom nav — mobile only */}
+        {!showUsers && (
+          <nav className="bottom-nav">
+            {visibleTopNav.map(n => (
+              <button key={n.id}
+                className={`bottom-nav-btn${topTab === n.id ? " active" : ""}`}
+                onClick={() => handleTopTab(n.id)}>
+                <span className="bottom-nav-icon">{n.icon}</span>
+                <span className="bottom-nav-label">{n.label}</span>
+              </button>
+            ))}
+          </nav>
         )}
       </div>
     </>
@@ -411,6 +459,119 @@ function getStyles(lm) {
     @media (max-width: 900px) {
       .two-col, .three-col { grid-template-columns: 1fr; }
       .header, .nav, .subnav { padding-left: 16px; padding-right: 16px; }
+    }
+
+    /* ── MOBILE STYLES (≤768px) ─────────────────────────────────────────── */
+    @media (max-width: 768px) {
+
+      /* Hamburger shows, desktop nav hides */
+      .hamburger-btn { display: inline-flex !important; }
+      .nav { display: none !important; }
+
+      /* Header compact */
+      .header { padding: 0 12px; height: 52px; }
+      .header-title { font-size: 14px; letter-spacing: 0.08em; }
+      .header-title span { display: none; }
+      .hide-mobile { display: none !important; }
+
+      /* Mobile slide-down menu */
+      .mobile-menu {
+        position: fixed; top: 52px; left: 0; right: 0; z-index: 200;
+        background: var(--surface); border-bottom: 1px solid var(--border);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      }
+      .mobile-menu-btn {
+        display: flex; align-items: center; gap: 12; width: 100%;
+        padding: 14px 20px; background: none; border: none;
+        border-bottom: 1px solid var(--border);
+        color: var(--text-dim); font-family: var(--font-mono);
+        font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+        cursor: pointer; text-align: left;
+      }
+      .mobile-menu-btn.active { color: var(--gold); background: var(--surface2); }
+      .mobile-menu-btn:last-child { border-bottom: none; }
+
+      /* Subnav scrolls horizontally */
+      .subnav { padding: 0 8px; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+      .subnav::-webkit-scrollbar { display: none; }
+      .subnav-btn { padding: 8px 12px; font-size: 10px; }
+
+      /* OneNote banner wraps */
+      .onenote-banner { flex-wrap: wrap; padding: 8px 12px !important; gap: 8px !important; }
+      .onenote-banner input { max-width: 100% !important; }
+
+      /* Main content gets bottom padding for bottom nav */
+      .main { padding-bottom: 60px; }
+
+      /* Bottom nav */
+      .bottom-nav {
+        display: flex !important;
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+        background: var(--surface); border-top: 1px solid var(--border);
+        height: 60px;
+      }
+      .bottom-nav-btn {
+        flex: 1; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 3px;
+        background: none; border: none; cursor: pointer;
+        color: var(--text-muted); padding: 4px 0;
+        font-family: var(--font-mono); transition: color 0.15s;
+      }
+      .bottom-nav-btn.active { color: var(--gold); }
+      .bottom-nav-icon { font-size: 16px; line-height: 1; }
+      .bottom-nav-label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+      /* Two/three col grids collapse */
+      .two-col, .three-col { grid-template-columns: 1fr !important; }
+
+      /* Sidebar panels become full-width drawers */
+      .sidebar-drawer {
+        width: 100% !important; height: auto !important;
+        border-right: none !important; border-bottom: 1px solid var(--border) !important;
+        max-height: 280px;
+      }
+      .sidebar-drawer-hidden { display: none !important; }
+
+      /* Split layouts stack vertically */
+      .split-layout {
+        flex-direction: column !important;
+        overflow: visible !important;
+      }
+      .split-layout > * { height: auto !important; }
+      .split-right {
+        flex: none !important;
+        height: auto !important;
+        min-height: 400px;
+      }
+
+      /* Back button — mobile only */
+      .mobile-back-btn { display: inline-flex !important; }
+
+      /* Pulse grid */
+      .pulse-grid { grid-template-columns: 1fr !important; overflow: visible !important; }
+      .pulse-grid > * { height: auto !important; min-height: 200px; }
+
+      /* Agenda action bar wraps */
+      .agenda-action-bar {
+        flex-wrap: wrap; gap: 8px !important;
+        padding: 10px 12px !important;
+      }
+      .agenda-action-bar > div:first-child { width: 100%; }
+
+      /* Panels get tighter padding */
+      .panel-body { padding: 12px !important; }
+      .scroll { -webkit-overflow-scrolling: touch; }
+
+      /* Toast moves up above bottom nav */
+      .toast { bottom: 72px !important; right: 12px !important; left: 12px; text-align: center; }
+    }
+
+    /* Desktop: hamburger and bottom nav hidden */
+    @media (min-width: 769px) {
+      .hamburger-btn { display: none !important; }
+      .mobile-menu { display: none !important; }
+      .bottom-nav { display: none !important; }
+      .mobile-back-btn { display: none !important; }
     }
   `;
 }

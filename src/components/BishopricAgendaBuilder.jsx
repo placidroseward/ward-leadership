@@ -224,12 +224,12 @@ export default function BishopricAgendaBuilder({ api, week }) {
   };
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <div className="split-layout" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {toast && <div className="toast">{toast}</div>}
       {sendLog && <SendLogModal title={sendLog.title} results={sendLog.results} onClose={() => setSendLog(null)} />}
 
       {/* Left sidebar */}
-      <div className="scroll" style={{ width: 260, borderRight: "1px solid var(--border)", padding: 16, flexShrink: 0, background: "var(--surface)" }}>
+      <div className={`scroll sidebar-drawer${selected ? " sidebar-drawer-hidden" : ""}`} style={{ width: 260, borderRight: "1px solid var(--border)", padding: 16, flexShrink: 0, background: "var(--surface)" }}>
         <button className="btn btn-gold" style={{ width: "100%", marginBottom: 16 }} onClick={createNew}>
           + New Agenda
         </button>
@@ -278,9 +278,13 @@ export default function BishopricAgendaBuilder({ api, week }) {
           </div>
         </div>
       ) : (
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface)", flexShrink: 0 }}>
-            <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--text)" }}>{selected.title || selected.week}</div>
+        <div className="split-right" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div className="agenda-action-bar" style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface)", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button className="btn btn-ghost mobile-back-btn" style={{ fontSize: 10, padding: "4px 8px" }}
+                onClick={() => setSelected(null)}>← Back</button>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--text)" }}>{selected.title || selected.week}</div>
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button className="btn btn-ghost" style={{ fontSize: 10, color: "var(--danger)" }} onClick={() => deleteAgenda(selected.id)}>Delete</button>
               <button className="btn btn-outline" onClick={save} disabled={saving}>{saving ? <><span className="spinner" /> Saving...</> : "Save"}</button>

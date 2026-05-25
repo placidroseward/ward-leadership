@@ -287,7 +287,7 @@ export default function PulseManager({ api, week }) {
         </button>
       </div>
 
-      <div style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 320px", gap: 0 }}>
+      <div className="pulse-grid" style={{ flex: 1, overflow: "hidden", display: "grid", gridTemplateColumns: "1fr 320px", gap: 0 }}>
 
         {/* Responses */}
         <div className="scroll" style={{ padding: 24, borderRight: "1px solid var(--border)" }}>
