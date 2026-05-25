@@ -684,7 +684,8 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
   const goals = getAll("bishopricGoals");
   const inboxItems = getAll("bishopricInbox").filter(i => !i.routed && (i.targetWeek === week || !i.targetWeek));
 
-  // Fetch notes
+  // Fetch notes — prefer manual bishopricNotes for the week, fall back to
+  // the most recent OneNote page received via the Make webhook.
   let notesText = "";
   const notes = getAll("bishopricNotes").filter(n => n.week === week);
   if (notes.length > 0) {
@@ -695,6 +696,16 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
         const r = await fetch(latest.url);
         notesText = (await r.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
       } catch { notesText = `[Notes URL provided but could not be fetched]`; }
+    }
+  }
+  // Fall back to latest OneNote page from Make webhook if no manual notes set
+  if (!notesText) {
+    const oneNotePages = getAll("bishopricOneNotePages")
+      .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+    if (oneNotePages.length > 0) {
+      const latestPage = oneNotePages[0];
+      notesText = `[From OneNote — "${latestPage.title}" (${latestPage.pageCreatedAt?.slice(0,10)})]\n\n${latestPage.content}`.slice(0, 3000);
+      console.log(`[ONENOTE] Using page "${latestPage.title}" for agenda generation`);
     }
   }
 
@@ -760,6 +771,51 @@ app.post("/api/bishopric/notes", (req, res) => {
   const existing = getAll("bishopricNotes").find(n => n.week === week);
   if (existing) return res.json(update("bishopricNotes", existing.id, { url: url || null, text: text || null, updatedAt: new Date().toISOString() }));
   res.json(insert("bishopricNotes", { id: randomUUID(), week, url: url || null, text: text || null, addedAt: new Date().toISOString() }));
+});
+
+// ─── BISHOPRIC ONENOTE WEBHOOK (receives pages from Make) ────────────────────
+const ONENOTE_WEBHOOK_SECRET = process.env.ONENOTE_WEBHOOK_SECRET || "placid-rose-onenote-2026";
+
+app.post("/api/bishopric/onenote/webhook", (req, res) => {
+  const { webhookSecret, title, content, createdAt } = req.body;
+
+  if (webhookSecret !== ONENOTE_WEBHOOK_SECRET) {
+    console.warn("[ONENOTE] Rejected webhook — bad secret");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!content && !title) {
+    return res.status(400).json({ error: "title or content required" });
+  }
+
+  // Strip HTML tags OneNote sends, collapse whitespace
+  const plainText = (content || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const page = insert("bishopricOneNotePages", {
+    id: randomUUID(),
+    title: title || "Untitled",
+    content: plainText,
+    receivedAt: new Date().toISOString(),
+    pageCreatedAt: createdAt || new Date().toISOString(),
+  });
+
+  console.log(`[ONENOTE] Stored page: "${page.title}" (${plainText.length} chars)`);
+  res.json({ ok: true, id: page.id });
+});
+
+// Returns the most recently received OneNote page
+app.get("/api/bishopric/onenote/latest", (req, res) => {
+  const pages = getAll("bishopricOneNotePages")
+    .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+  if (pages.length === 0) return res.json(null);
+  res.json(pages[0]);
 });
 
 // Bishopric pulse
