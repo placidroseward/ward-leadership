@@ -42,6 +42,9 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
   const [lightMode, setLightMode] = useState(() => localStorage.getItem("lightMode") === "1");
+  const [oneNoteUrl, setOneNoteUrl] = useState(() => localStorage.getItem("bishopric_onenote_url") || "");
+  const [editingOneNote, setEditingOneNote] = useState(false);
+  const [oneNoteDraft, setOneNoteDraft] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("wc_user");
@@ -225,6 +228,64 @@ export default function App() {
                     {s.label}
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* OneNote banner — Bishopric tab only */}
+            {topTab === "bishopric" && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "8px 32px", borderBottom: "1px solid var(--border)",
+                background: "var(--surface)", flexShrink: 0,
+              }}>
+                <span style={{ fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                  📓 Notebook
+                </span>
+                {editingOneNote ? (
+                  <>
+                    <input
+                      className="input"
+                      style={{ maxWidth: 420, fontSize: 11, padding: "4px 10px" }}
+                      placeholder="Paste OneNote notebook URL…"
+                      value={oneNoteDraft}
+                      onChange={e => setOneNoteDraft(e.target.value)}
+                      autoFocus
+                    />
+                    <button className="btn btn-gold" style={{ fontSize: 10, padding: "4px 12px" }}
+                      onClick={() => {
+                        setOneNoteUrl(oneNoteDraft.trim());
+                        localStorage.setItem("bishopric_onenote_url", oneNoteDraft.trim());
+                        setEditingOneNote(false);
+                      }}>Save</button>
+                    <button className="btn btn-ghost" style={{ fontSize: 10, padding: "4px 10px" }}
+                      onClick={() => setEditingOneNote(false)}>Cancel</button>
+                  </>
+                ) : oneNoteUrl ? (
+                  <>
+                    <a
+                      href={oneNoteUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        fontSize: 11, color: "var(--gold)", textDecoration: "none",
+                        border: "1px solid var(--gold-dim)", borderRadius: "var(--radius)",
+                        padding: "4px 12px", fontFamily: "var(--font-mono)",
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      ↗ Open Bishopric Notebook
+                    </a>
+                    <button className="btn btn-ghost" style={{ fontSize: 10, padding: "4px 8px", color: "var(--text-muted)" }}
+                      onClick={() => { setOneNoteDraft(oneNoteUrl); setEditingOneNote(true); }}
+                      title="Edit notebook URL">✎</button>
+                  </>
+                ) : (
+                  <button className="btn btn-outline" style={{ fontSize: 10, padding: "4px 12px" }}
+                    onClick={() => { setOneNoteDraft(""); setEditingOneNote(true); }}>
+                    + Associate Notebook
+                  </button>
+                )}
               </div>
             )}
 
