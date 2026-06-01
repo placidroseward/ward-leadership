@@ -536,6 +536,18 @@ app.post("/api/agendas/generate", async (req, res) => {
       }
     }
   }
+  // Fall back to latest OneNote page from Make webhook if no manual minutes set
+  if (!minutesText) {
+    const oneNotePages = getAll("wardCouncilOneNotePages")
+      .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+    if (oneNotePages.length > 0) {
+      const latestPage = oneNotePages[0];
+      minutesText = `[From OneNote — "${latestPage.title}" (${latestPage.pageCreatedAt?.slice(0,10)})]
+
+${latestPage.content}`.slice(0, 3000);
+      console.log(`[ONENOTE-WC] Using page "${latestPage.title}" for agenda generation`);
+    }
+  }
 
   try {
     const agenda = await generateAgenda({ pulseResponses, goals, weekKey: week, members, minutesText });
@@ -771,6 +783,51 @@ app.post("/api/bishopric/notes", (req, res) => {
   const existing = getAll("bishopricNotes").find(n => n.week === week);
   if (existing) return res.json(update("bishopricNotes", existing.id, { url: url || null, text: text || null, updatedAt: new Date().toISOString() }));
   res.json(insert("bishopricNotes", { id: randomUUID(), week, url: url || null, text: text || null, addedAt: new Date().toISOString() }));
+});
+
+// ─── WARD COUNCIL ONENOTE WEBHOOK (receives pages from Make) ─────────────────
+const WC_ONENOTE_WEBHOOK_SECRET = process.env.WC_ONENOTE_WEBHOOK_SECRET || "placid-rose-wc-onenote-2026";
+
+app.post("/api/wardcouncil/onenote/webhook", (req, res) => {
+  const { webhookSecret, title, content, createdAt } = req.body;
+
+  if (webhookSecret !== WC_ONENOTE_WEBHOOK_SECRET) {
+    console.warn("[ONENOTE-WC] Rejected webhook — bad secret");
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  if (!content && !title) {
+    return res.status(400).json({ error: "title or content required" });
+  }
+
+  // Strip HTML tags OneNote sends, collapse whitespace
+  const plainText = (content || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const page = insert("wardCouncilOneNotePages", {
+    id: randomUUID(),
+    title: title || "Untitled",
+    content: plainText,
+    receivedAt: new Date().toISOString(),
+    pageCreatedAt: createdAt || new Date().toISOString(),
+  });
+
+  console.log(`[ONENOTE-WC] Stored page: "${page.title}" (${plainText.length} chars)`);
+  res.json({ ok: true, id: page.id });
+});
+
+// Returns the most recently received Ward Council OneNote page
+app.get("/api/wardcouncil/onenote/latest", (req, res) => {
+  const pages = getAll("wardCouncilOneNotePages")
+    .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+  if (pages.length === 0) return res.json(null);
+  res.json(pages[0]);
 });
 
 // ─── BISHOPRIC ONENOTE WEBHOOK (receives pages from Make) ────────────────────
