@@ -186,7 +186,7 @@ export default function App() {
               {mobileMenuOpen ? "✕" : "☰"}
             </button>
             <span className="header-title">
-              Placid Rose Ward Council
+              Placid Rose Leadership
               <span>Executive Dashboard</span>
             </span>
           </div>
