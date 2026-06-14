@@ -894,7 +894,29 @@ app.get("/api/wardcouncil/onenote/latest", (req, res) => {
 // ─── BISHOPRIC ONENOTE WEBHOOK (receives pages from Make) ────────────────────
 const ONENOTE_WEBHOOK_SECRET = process.env.ONENOTE_WEBHOOK_SECRET || "placid-rose-onenote-2026";
 
+// Debug endpoint — shows last 5 webhook attempts regardless of success/failure
+app.get("/api/bishopric/onenote/debug", (req, res) => {
+  const pages = getAll("bishopricOneNotePages")
+    .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
+  const lastAttempt = getAll("bishopricWebhookLog")
+    .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt))
+    .slice(0, 5);
+  res.json({ storedPages: pages.length, lastAttempts: lastAttempt });
+});
+
 app.post("/api/bishopric/onenote/webhook", (req, res) => {
+  // Log every attempt before any validation
+  insert("bishopricWebhookLog", {
+    id: randomUUID(),
+    receivedAt: new Date().toISOString(),
+    bodyKeys: Object.keys(req.body || {}),
+    secretMatch: (req.body?.webhookSecret === ONENOTE_WEBHOOK_SECRET),
+    hasContent: !!req.body?.content,
+    hasTitle: !!req.body?.title,
+    contentLength: (req.body?.content || "").length,
+    titleValue: req.body?.title || null,
+  });
+
   const { webhookSecret, title, content, createdAt } = req.body;
 
   if (webhookSecret !== ONENOTE_WEBHOOK_SECRET) {
