@@ -80,8 +80,29 @@ function parseNameTopic(val) {
   return { name: val.trim(), topic: null };
 }
 
-// ─── Local storage for editable fields ───────────────────────────────────────
-function loadEdits(dateKey) {
+// Convert "4-Jan" date string to YYYY-MM-DD for server key
+function toSundayKey(dateStr) {
+  const d = parseMeetingDate(dateStr);
+  if (!d) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+// Merge localStorage edits with server edits — server values take precedence
+// for fields that are non-empty on the server side.
+function mergeEdits(local, server) {
+  if (!server) return local;
+  return {
+    announcements: server.announcements?.length ? server.announcements : (local.announcements || []),
+    newMembers:    server.newMembers?.length    ? server.newMembers    : (local.newMembers || []),
+    releasings:    server.releasings?.length    ? server.releasings    : (local.releasings || []),
+    sustainings:   server.sustainings?.length   ? server.sustainings   : (local.sustainings || []),
+    otherBusiness: server.otherBusiness         ? server.otherBusiness : (local.otherBusiness || ""),
+    conducting:    server.conducting            ? server.conducting    : (local.conducting || ""),
+    _fromServer: true,
+    _lastUpdatedBy: server.lastUpdatedBy || null,
+    _lastUpdated: server.lastUpdated || null,
+  };
+}
   try {
     const raw = localStorage.getItem(`sp_edits_${dateKey}`);
     return raw ? JSON.parse(raw) : {};
@@ -321,13 +342,14 @@ ${body}
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function SacramentProgram() {
+export default function SacramentProgram({ api }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [lastFetched, setLastFetched] = useState(null);
   const [edits, setEdits] = useState({});
+  const [serverEdits, setServerEdits] = useState(null);
 
   const fetchData = async () => {
     setLoading(true); setError(null);
@@ -345,15 +367,36 @@ export default function SacramentProgram() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Load edits from localStorage when date changes
+  // Load localStorage + server edits when date changes
   useEffect(() => {
-    if (selectedDate) setEdits(loadEdits(selectedDate));
-  }, [selectedDate]);
+    if (!selectedDate) return;
+    const local = loadEdits(selectedDate);
+    setEdits(local);
+    const sundayKey = toSundayKey(selectedDate);
+    if (api && sundayKey) {
+      fetch(`${api}/api/sacrament/edits/${sundayKey}`)
+        .then(r => r.json())
+        .then(data => {
+          setServerEdits(data);
+          if (data) setEdits(mergeEdits(local, data));
+        })
+        .catch(() => {});
+    }
+  }, [selectedDate, api]);
 
   const setEdit = (key, value) => {
     const next = { ...edits, [key]: value };
     setEdits(next);
     saveEdits(selectedDate, next);
+    // Also persist to server
+    const sundayKey = toSundayKey(selectedDate);
+    if (api && sundayKey) {
+      fetch(`${api}/api/sacrament/edits/${sundayKey}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      }).catch(() => {});
+    }
   };
 
   const addListItem = (key) => {
@@ -465,6 +508,12 @@ export default function SacramentProgram() {
               <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--text)" }}>{formatDate(selected["__date"])}</div>
               {fast && <div style={{ fontSize: 11, color: "var(--gold)", marginTop: 2 }}>Fast &amp; Testimony Meeting</div>}
               {stake && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Stake Conference</div>}
+              {serverEdits && (
+                <div style={{ fontSize: 10, color: "var(--gold-dim)", marginTop: 2 }}>
+                  ◈ GroupMe edits applied{serverEdits.lastUpdatedBy ? ` · from ${serverEdits.lastUpdatedBy}` : ""}
+                  {serverEdits.lastUpdated ? ` · ${new Date(serverEdits.lastUpdated).toLocaleString()}` : ""}
+                </div>
+              )}
             </div>
             <button className="btn btn-gold" onClick={handlePrint}>⎙ Print Program</button>
           </div>

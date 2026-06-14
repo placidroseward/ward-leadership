@@ -385,7 +385,7 @@ export default function App() {
 
               {/* Bishopric subtabs */}
               {topTab === "bishopric" && subTab === "bishopric-agenda" && <BishopricAgendaBuilder api={API} week={week} />}
-              {topTab === "bishopric" && subTab === "sacrament-program" && <SacramentProgram />}
+              {topTab === "bishopric" && subTab === "sacrament-program" && <SacramentProgram api={API} />}
 
               {/* Ward Calendar */}
               {topTab === "calendar" && <WardCalendar api={API} />}

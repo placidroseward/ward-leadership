@@ -355,13 +355,14 @@ Message from ${fromName}: "${body}"
 Current week: ${currentWeek}
 
 Routing options:
+- "sacrament" = relates to the Sacrament Meeting program (announcements, ward business like new members/releasings/sustainings, conducting, speakers). Use this when the message is clearly about what goes IN the printed sacrament program.
 - "bishopric" = add to bishopric meeting agenda (default for most messages)
 - "wardcouncil" = add to ward council agenda (only if message explicitly mentions ward council)
 
 Also determine the target week if specified (e.g. "in two weeks", "next week", "week after next").
 
 Return only valid JSON:
-{ "destination": "bishopric" | "wardcouncil", "targetWeek": "${currentWeek}" | null, "reasoning": "brief explanation" }`;
+{ "destination": "sacrament" | "bishopric" | "wardcouncil", "targetWeek": "${currentWeek}" | null, "reasoning": "brief explanation" }`;
 
   const response = await getClient().messages.create({
     model: "claude-sonnet-4-20250514",
@@ -375,5 +376,50 @@ Return only valid JSON:
     return JSON.parse(clean);
   } catch {
     return { destination: "bishopric", targetWeek: currentWeek };
+  }
+}
+
+// Parses a GroupMe message intended for the Sacrament Meeting program and
+// returns structured edits. Only touches announcements and ward business —
+// never music, opening, sacrament, or closing sections.
+export async function parseSacramentEdit({ body, fromName }) {
+  const prompt = `You are helping an Executive Secretary update a Sacrament Meeting program based on a message from a bishopric member.
+
+Message from ${fromName}: "${body}"
+
+Extract any program changes from this message. You may ONLY update these fields:
+- announcements: array of announcement strings to add (or empty array)
+- removeAnnouncements: array of announcement strings to remove (or empty array)
+- newMembers: array of new member names to add (or empty array)
+- releasings: array of "Name — Calling" strings to add (or empty array)
+- sustainings: array of "Name — Calling" strings to add (or empty array)
+- otherBusiness: a single string for other ward business (or null)
+- conducting: name of who is conducting (or null — only if explicitly changed)
+
+Do NOT extract anything about music, hymns, organist, opening prayer, sacrament, closing prayer, or speakers. Those are read-only.
+
+Return only valid JSON:
+{
+  "announcements": [],
+  "removeAnnouncements": [],
+  "newMembers": [],
+  "releasings": [],
+  "sustainings": [],
+  "otherBusiness": null,
+  "conducting": null
+}`;
+
+  const response = await getClient().messages.create({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 400,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = response.content[0]?.text || "{}";
+  const clean = text.replace(/```json|```/g, "").trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    return { announcements: [], removeAnnouncements: [], newMembers: [], releasings: [], sustainings: [], otherBusiness: null, conducting: null };
   }
 }

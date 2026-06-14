@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
 import { sendPulse, sendBishopricPulse, sendToWardCouncil, sendToBishopric, parsePulseResponse, matchMember } from "./groupme.js";
-import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda, routeSMS } from "./src/lib/claude.js";
+import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda, routeSMS, parseSacramentEdit } from "./src/lib/claude.js";
 import { ALL_MEMBERS, ORG_CATALOG } from "./src/data/council.js";
 
 // Resolve an orgKey to its canonical { orgKey, org, orgColor } tuple.
@@ -430,15 +430,53 @@ app.post("/webhook/groupme/bishopric", async (req, res) => {
   // AI route bishopric messages
   try {
     const routingResult = await routeSMS({ body: text.trim(), fromName: member?.name || name, currentWeek: week });
-    insert("bishopricInbox", {
-      id: randomUUID(), body: text.trim(),
-      fromName: member?.name || name,
-      targetWeek: routingResult.targetWeek || week,
-      receivedAt: new Date().toISOString(),
-      routed: false,
-      suggestedTarget: routingResult.destination,
-    });
     console.log(`[GROUPME] Bishopric message from ${member?.name || name} routed to ${routingResult.destination}`);
+
+    if (routingResult.destination === "sacrament") {
+      // Parse the message for sacrament program edits
+      const edits = await parseSacramentEdit({ body: text.trim(), fromName: member?.name || name });
+      // Find the next Sunday date key (YYYY-MM-DD format for storage)
+      const today = new Date();
+      const daysUntilSunday = (7 - today.getDay()) % 7 || 7;
+      const nextSunday = new Date(today);
+      nextSunday.setDate(today.getDate() + daysUntilSunday);
+      const sundayKey = nextSunday.toISOString().slice(0, 10);
+
+      // Load existing edits for this Sunday and merge
+      const existing = getAll("sacramentEdits").find(e => e.sundayKey === sundayKey) || { sundayKey, announcements: [], newMembers: [], releasings: [], sustainings: [], otherBusiness: "", conducting: "" };
+      const merged = {
+        ...existing,
+        announcements: [
+          ...(existing.announcements || []),
+          ...(edits.announcements || []),
+        ].filter(a => !(edits.removeAnnouncements || []).includes(a)),
+        newMembers: [...new Set([...(existing.newMembers || []), ...(edits.newMembers || [])])],
+        releasings: [...new Set([...(existing.releasings || []), ...(edits.releasings || [])])],
+        sustainings: [...new Set([...(existing.sustainings || []), ...(edits.sustainings || [])])],
+        otherBusiness: edits.otherBusiness ?? existing.otherBusiness ?? "",
+        conducting: edits.conducting ?? existing.conducting ?? "",
+        lastUpdated: new Date().toISOString(),
+        lastUpdatedBy: member?.name || name,
+      };
+
+      const existingRecord = getAll("sacramentEdits").find(e => e.sundayKey === sundayKey);
+      if (existingRecord) {
+        update("sacramentEdits", existingRecord.id, merged);
+      } else {
+        insert("sacramentEdits", { id: randomUUID(), ...merged });
+      }
+      console.log(`[SACRAMENT] Applied edits for ${sundayKey} from ${member?.name || name}`);
+
+    } else {
+      insert("bishopricInbox", {
+        id: randomUUID(), body: text.trim(),
+        fromName: member?.name || name,
+        targetWeek: routingResult.targetWeek || week,
+        receivedAt: new Date().toISOString(),
+        routed: false,
+        suggestedTarget: routingResult.destination,
+      });
+    }
   } catch (err) {
     console.error("[GROUPME ROUTING]", err.message);
     // Store unrouted so it shows in inbox
@@ -1059,6 +1097,25 @@ app.post("/api/bishopric/inbox/:id/route", (req, res) => {
     }
   }
   res.json({ ok: true });
+});
+
+// ─── SACRAMENT PROGRAM EDITS API ──────────────────────────────────────────────
+// Returns GroupMe-sourced edits for a given Sunday (YYYY-MM-DD)
+app.get("/api/sacrament/edits/:sundayKey", (req, res) => {
+  const record = getAll("sacramentEdits").find(e => e.sundayKey === req.params.sundayKey);
+  res.json(record || null);
+});
+
+// Manual save from the UI (supplements GroupMe edits)
+app.put("/api/sacrament/edits/:sundayKey", (req, res) => {
+  const existing = getAll("sacramentEdits").find(e => e.sundayKey === req.params.sundayKey);
+  if (existing) {
+    const updated = update("sacramentEdits", existing.id, { ...req.body, lastUpdated: new Date().toISOString() });
+    res.json(updated);
+  } else {
+    const inserted = insert("sacramentEdits", { id: randomUUID(), sundayKey: req.params.sundayKey, ...req.body, lastUpdated: new Date().toISOString() });
+    res.json(inserted);
+  }
 });
 
 // ─── CALENDAR API ─────────────────────────────────────────────────────────────
