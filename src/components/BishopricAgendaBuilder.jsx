@@ -192,12 +192,18 @@ export default function BishopricAgendaBuilder({ api, week }) {
       }
     } catch { /* leave blank if fetch fails */ }
 
+    // Pull latest notes — manual notes first, fall back to OneNote
+    let notesText = manualNotes || "";
+    if (!notesText && oneNotePreview?.content) {
+      notesText = `[From OneNote — "${oneNotePreview.title}"]\n\n${oneNotePreview.content}`;
+    }
+
     const newAgenda = {
       week: week || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       title: `Bishopric Meeting — ${week || ""}`,
       status: "draft",
       generatedAt: new Date().toISOString(),
-      agendaData: { ...randomAssignments, minutesNotes: "", calendarNotes: "", roundTableItems: [] },
+      agendaData: { ...randomAssignments, minutesNotes: notesText, calendarNotes: "", roundTableItems: [] },
     };
     try {
       const res = await fetch(`${api}/api/bishopric/agendas/create`, {
@@ -209,7 +215,8 @@ export default function BishopricAgendaBuilder({ api, week }) {
       setOpeningPrayer(randomAssignments.openingPrayer);
       setSpiritualThought(randomAssignments.spiritualThought);
       setClosingPrayer(randomAssignments.closingPrayer);
-      showToast("New agenda created — prayer assignments randomly assigned");
+      setMinutesNotes(notesText);
+      showToast(notesText ? "New agenda created — notes pre-filled from OneNote" : "New agenda created — prayer assignments randomly assigned");
     } catch {
       const local = { ...newAgenda, id: Date.now().toString() };
       setAgendas(prev => [local, ...prev]); setSelected(local);
