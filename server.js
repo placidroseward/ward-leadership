@@ -1185,13 +1185,19 @@ app.post("/api/calendar/events", async (req, res) => {
     const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/calendar"] });
     const calendar = google.calendar({ version: "v3", auth });
     const { title, start, end, location, description } = req.body;
+    const toISO = (dt) => {
+      if (!dt) return undefined;
+      if (dt.includes("T") && !dt.includes("Z") && !dt.match(/[+-]\d{2}:\d{2}$/)) {
+        return new Date(dt).toISOString();
+      }
+      return dt;
+    };
     const response = await calendar.events.insert({
       calendarId,
       requestBody: {
-        summary: title,
-        location, description,
-        start: { dateTime: start },
-        end: { dateTime: end || start },
+        summary: title, location, description,
+        start: { dateTime: toISO(start), timeZone: "America/Denver" },
+        end: { dateTime: toISO(end || start), timeZone: "America/Denver" },
       },
     });
     res.json({ id: response.data.id, title, start, end, location, description });
@@ -1216,12 +1222,20 @@ app.put("/api/calendar/events/:id", async (req, res) => {
     const auth = new google.auth.GoogleAuth({ credentials: key, scopes: ["https://www.googleapis.com/auth/calendar"] });
     const calendar = google.calendar({ version: "v3", auth });
     const { title, start, end, location, description } = req.body;
+    // Ensure full ISO datetime — datetime-local inputs omit timezone offset
+    const toISO = (dt) => {
+      if (!dt) return undefined;
+      if (dt.includes("T") && !dt.includes("Z") && !dt.match(/[+-]\d{2}:\d{2}$/)) {
+        return new Date(dt).toISOString();
+      }
+      return dt;
+    };
     await calendar.events.update({
       calendarId, eventId: req.params.id,
       requestBody: {
         summary: title, location, description,
-        start: { dateTime: start },
-        end: { dateTime: end || start },
+        start: { dateTime: toISO(start), timeZone: "America/Denver" },
+        end: { dateTime: toISO(end || start), timeZone: "America/Denver" },
       },
     });
     res.json({ id: req.params.id, ...req.body });
