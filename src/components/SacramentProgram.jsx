@@ -188,26 +188,28 @@ function Notice({ children }) {
 const PRINT_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'EB Garamond', Georgia, serif; font-size: 11pt; color: #1a1814; background: white; width: 7.5in; margin: 0 auto; padding: 0.5in; }
+  body { font-family: 'EB Garamond', Georgia, serif; font-size: 14pt; color: #1a1814; background: white; width: 7.5in; margin: 0 auto; padding: 0.5in; }
   .prog-header { text-align: center; margin-bottom: 0.3in; border-bottom: 1.5pt solid #8B6914; padding-bottom: 0.18in; }
-  .prog-ward { font-family: 'Cormorant Garamond', serif; font-size: 22pt; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #1a1814; }
-  .prog-subtitle { font-size: 10pt; letter-spacing: 0.18em; text-transform: uppercase; color: #6B6760; margin-top: 2pt; }
-  .prog-date { font-family: 'Cormorant Garamond', serif; font-size: 16pt; font-weight: 400; font-style: italic; color: #8B6914; margin-top: 6pt; }
-  .prog-time { font-size: 9.5pt; color: #6B6760; letter-spacing: 0.1em; margin-top: 2pt; }
-  hr { border: none; border-top: 0.5pt solid #D4CFC6; margin: 10pt 0; }
-  .section-title { font-family: 'Cormorant Garamond', serif; font-size: 8pt; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #8B6914; margin-bottom: 5pt; }
-  .line { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3pt; gap: 8pt; }
-  .line-label { color: #6B6760; font-size: 9.5pt; flex-shrink: 0; }
-  .line-value { text-align: right; flex: 1; font-size: 10.5pt; }
+  .prog-ward { font-family: 'Cormorant Garamond', serif; font-size: 28pt; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #1a1814; }
+  .prog-subtitle { font-size: 13pt; letter-spacing: 0.18em; text-transform: uppercase; color: #6B6760; margin-top: 2pt; }
+  .prog-date { font-family: 'Cormorant Garamond', serif; font-size: 20pt; font-weight: 400; font-style: italic; color: #8B6914; margin-top: 6pt; }
+  .prog-time { font-size: 12pt; color: #6B6760; letter-spacing: 0.1em; margin-top: 2pt; }
+  hr { border: none; border-top: 0.5pt solid #D4CFC6; margin: 12pt 0; }
+  .section-title { font-family: 'Cormorant Garamond', serif; font-size: 11pt; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: #8B6914; margin-bottom: 6pt; }
+  .line { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4pt; gap: 8pt; }
+  .line-label { color: #6B6760; font-size: 12pt; flex-shrink: 0; }
+  .line-value { text-align: right; flex: 1; font-size: 14pt; }
   .line-value.hymn { font-style: italic; }
-  .line-only { font-size: 10.5pt; margin-bottom: 3pt; }
-  .line-indent { padding-left: 12pt; }
-  .notice { font-style: italic; color: #6B6760; font-size: 10pt; margin-bottom: 3pt; padding-left: 4pt; }
-  .speaker-block { margin-bottom: 6pt; }
-  .speaker-name { font-size: 11pt; font-weight: 500; }
-  .speaker-topic { font-size: 9.5pt; font-style: italic; color: #4a4540; margin-top: 1pt; }
-  .fast-notice { text-align: center; font-family: 'Cormorant Garamond', serif; font-size: 14pt; font-style: italic; color: #8B6914; padding: 0.2in 0; }
-  .prog-footer { margin-top: 0.25in; border-top: 1pt solid #D4CFC6; padding-top: 0.12in; text-align: center; font-size: 8.5pt; color: #9A9590; letter-spacing: 0.08em; }
+  .line-only { font-size: 14pt; margin-bottom: 4pt; }
+  .line-indent { padding-left: 14pt; }
+  .notice { font-style: italic; color: #6B6760; font-size: 13pt; margin-bottom: 4pt; padding-left: 4pt; }
+  .new-member-intro { font-size: 13pt; font-style: italic; color: #4a4540; margin-bottom: 6pt; line-height: 1.5; }
+  .new-member-outro { font-size: 13pt; font-style: italic; color: #4a4540; margin-top: 6pt; line-height: 1.5; }
+  .speaker-block { margin-bottom: 8pt; }
+  .speaker-name { font-size: 14pt; font-weight: 500; }
+  .speaker-topic { font-size: 12pt; font-style: italic; color: #4a4540; margin-top: 2pt; }
+  .fast-notice { text-align: center; font-family: 'Cormorant Garamond', serif; font-size: 18pt; font-style: italic; color: #8B6914; padding: 0.2in 0; }
+  .prog-footer { margin-top: 0.25in; border-top: 1pt solid #D4CFC6; padding-top: 0.12in; text-align: center; font-size: 11pt; color: #9A9590; letter-spacing: 0.08em; }
   @media print { @page { margin: 0.5in; } body { padding: 0; } }
 `;
 
@@ -283,7 +285,11 @@ function buildPrintHTML(row, edits) {
   // Ward Business
   if (hasWardBusiness) {
     body += sectionTitle("Ward Business");
-    newMembers.forEach(m => { body += line("New Member", m); });
+    if (newMembers.length) {
+      body += `<div class="new-member-intro">We have received the records of the following new members in the ward and would invite them to stand and be recognized...</div>`;
+      newMembers.forEach(m => { body += line("New Member", m); });
+      body += `<div class="new-member-outro">All those who can join with me in welcoming these new members into our ward, please do so by the uplifted hand.</div>`;
+    }
     releasings.forEach(r => { body += line("Released", r); });
     sustainings.forEach(s => { body += line("Sustained", s); });
     if (otherBusiness) body += lineOnly(otherBusiness);
@@ -337,7 +343,7 @@ function buildPrintHTML(row, edits) {
   <div class="prog-time">9:00 AM</div>
 </div>
 ${body}
-<div class="prog-footer">The Church of Jesus Christ of Latter-day Saints &nbsp;·&nbsp; Placid Rose Ward &nbsp;·&nbsp; West Jordan Utah Stake</div>
+<div class="prog-footer">The Church of Jesus Christ of Latter-day Saints &nbsp;·&nbsp; Placid Rose Ward &nbsp;·&nbsp; Herriman Utah South Stake</div>
 </body></html>`;
 }
 
