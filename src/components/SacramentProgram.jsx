@@ -103,6 +103,9 @@ function mergeEdits(local, server) {
     _lastUpdated: server.lastUpdated || null,
   };
 }
+
+// ─── Local storage for editable fields ───────────────────────────────────────
+function loadEdits(dateKey) {
   try {
     const raw = localStorage.getItem(`sp_edits_${dateKey}`);
     return raw ? JSON.parse(raw) : {};
