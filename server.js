@@ -772,6 +772,16 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
 
     const saved = insert("bishopricAgendas", {
       id: randomUUID(), week, ...agenda,
+      agendaData: {
+        openingPrayer: agenda.assignments?.openingPrayer || "",
+        spiritualThought: agenda.assignments?.spiritualThought || "",
+        closingPrayer: agenda.assignments?.closingPrayer || "",
+        minutesNotes: notesText || "",
+        calendarNotes: "",
+        roundTableItems: (getAll("bishopricRoutedItems").filter(r => r.week === week)).map(r => ({
+          id: randomUUID(), title: r.body.slice(0, 60), raisedBy: r.fromName, category: "ward-matter", notes: r.body,
+        })),
+      },
       generatedAt: new Date().toISOString(), status: "draft",
     });
     res.json(saved);
