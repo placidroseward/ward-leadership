@@ -664,12 +664,7 @@ app.get("/api/members", (req, res) => {
 // role === "bishopric". Returned in the {id, name} shape the agenda generator
 // expects.
 function getBishopricMembers() {
-  return getAll("users")
-    .filter(u => u.role === "bishopric")
-    .map(u => ({
-      id: u.id,
-      name: [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email,
-    }));
+  return getBishopricPrayerPool();
 }
 
 // Prayer pool for Bishopric agenda = Bishopric members + Ward Clerk + Executive Secretary
@@ -678,7 +673,12 @@ function getBishopricPrayerPool() {
   return getAll("users")
     .filter(u => {
       if (u.role === "bishopric") return true;
+      if (u.role === "admin") return true;
       const calling = (u.calling || "").toLowerCase();
+      const org = (u.org || "").toLowerCase();
+      const orgKey = (u.orgKey || "").toLowerCase();
+      if (calling.includes("bishop")) return true;
+      if (org.includes("bishopric") || orgKey.includes("bishopric")) return true;
       if (calling.includes("clerk")) return true;
       if (calling.includes("executive secretary") || calling.includes("exec secretary")) return true;
       return false;
