@@ -481,6 +481,8 @@ export default function SacramentProgram({ api }) {
     }
   }, [selectedDate, api]);
 
+  const [saveStatus, setSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
+
   const persistEdits = (next) => {
     setEdits(next);
     saveEdits(selectedDate, next);
@@ -490,6 +492,26 @@ export default function SacramentProgram({ api }) {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(next),
       }).catch(() => {});
+    }
+  };
+
+  const handleSave = async () => {
+    const sundayKey = toSundayKey(selectedDate);
+    if (!api || !sundayKey) return;
+    setSaveStatus("saving");
+    try {
+      const res = await fetch(`${api}/api/sacrament/edits/${sundayKey}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(edits),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      saveEdits(selectedDate, edits); // also update localStorage
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(null), 2500);
+    } catch (e) {
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus(null), 3000);
     }
   };
 
@@ -598,7 +620,15 @@ export default function SacramentProgram({ api }) {
               {stake && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Stake Conference</div>}
               {serverEdits && <div style={{ fontSize: 10, color: "var(--gold-dim)", marginTop: 2 }}>◈ GroupMe edits applied{serverEdits.lastUpdatedBy ? ` · ${serverEdits.lastUpdatedBy}` : ""}</div>}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {saveStatus && (
+                <span style={{ fontSize: 11, color: saveStatus === "saved" ? "var(--success)" : saveStatus === "error" ? "var(--danger)" : "var(--text-muted)" }}>
+                  {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "✓ Saved" : "✕ Save failed"}
+                </span>
+              )}
+              <button className="btn btn-outline" onClick={handleSave} disabled={saveStatus === "saving"}>
+                💾 Save
+              </button>
               {(releasings.filter(r => r?.name?.trim()).length > 0 || sustainings.filter(s => s?.name?.trim()).length > 0) && (
                 <button className="btn btn-outline" onClick={handlePrintForms}>⎙ Print Forms</button>
               )}
