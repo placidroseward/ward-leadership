@@ -433,9 +433,31 @@ export default function BishopricAgendaBuilder({ api, week }) {
             </Section>
 
             <Section number="4" title="Review Previous Minutes & Unresolved Items" color="var(--rs)">
-              <textarea className="input" style={{ minHeight: 80 }}
-                placeholder="Notes on previous minutes or unresolved action items..."
-                value={minutesNotes} onChange={e => setMinutesNotes(e.target.value)} />
+              {minutesNotes ? (
+                <>
+                  <div style={{ marginBottom: 10 }}>
+                    {minutesNotes
+                      .split(/\n|(?<=[.!?])\s{2,}/)
+                      .map(s => s.trim())
+                      .filter(s => s.length > 3)
+                      .map((line, i) => (
+                        <div key={i} style={{ display: "flex", gap: 8, marginBottom: 5, alignItems: "flex-start" }}>
+                          <span style={{ color: "var(--rs)", flexShrink: 0, marginTop: 1 }}>•</span>
+                          <span style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.5 }}>{line}</span>
+                        </div>
+                      ))
+                    }
+                  </div>
+                  <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 8px", color: "var(--text-muted)", marginBottom: 8 }}
+                    onClick={() => setMinutesNotes("")}>
+                    ✕ Clear & type manually
+                  </button>
+                </>
+              ) : (
+                <textarea className="input" style={{ minHeight: 80 }}
+                  placeholder="Notes on previous minutes or unresolved action items..."
+                  value={minutesNotes} onChange={e => setMinutesNotes(e.target.value)} />
+              )}
             </Section>
 
             <Section number="5" title="Discuss Ward Calendar" color="var(--yw)">

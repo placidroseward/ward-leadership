@@ -674,6 +674,7 @@ function getBishopricMembers() {
 
 // Prayer pool for Bishopric agenda = Bishopric members + Ward Clerk + Executive Secretary
 function getBishopricPrayerPool() {
+  const seen = new Set();
   return getAll("users")
     .filter(u => {
       if (u.role === "bishopric") return true;
@@ -681,6 +682,11 @@ function getBishopricPrayerPool() {
       if (calling.includes("clerk")) return true;
       if (calling.includes("executive secretary") || calling.includes("exec secretary")) return true;
       return false;
+    })
+    .filter(u => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
     })
     .map(u => ({
       id: u.id,
