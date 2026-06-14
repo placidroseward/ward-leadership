@@ -87,7 +87,9 @@ function parseNameTopic(val) {
 function toSundayKey(dateStr) {
   const d = parseMeetingDate(dateStr);
   if (!d) return null;
-  return d.toISOString().slice(0, 10);
+  // Use local date components to avoid UTC conversion shifting the date
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
 // ─── Default blank releasing / sustaining records ────────────────────────────
@@ -497,7 +499,7 @@ export default function SacramentProgram({ api }) {
 
   const handleSave = async () => {
     const sundayKey = toSundayKey(selectedDate);
-    if (!api || !sundayKey) return;
+    if (!api || !sundayKey) { setSaveStatus("error"); return; }
     setSaveStatus("saving");
     try {
       const res = await fetch(`${api}/api/sacrament/edits/${sundayKey}`, {
@@ -506,10 +508,11 @@ export default function SacramentProgram({ api }) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      saveEdits(selectedDate, edits); // also update localStorage
+      saveEdits(selectedDate, edits);
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(null), 2500);
     } catch (e) {
+      console.error("[SAVE]", e.message);
       setSaveStatus("error");
       setTimeout(() => setSaveStatus(null), 3000);
     }
