@@ -744,6 +744,32 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
 
   try {
     const agenda = await generateBishopricAgenda({ pulseResponses, goals, weekKey: week, members: bishopricMembers, notesText, inboxItems });
+
+    // Append any manually-routed round-table items for this week
+    const routedItems = getAll("bishopricRoutedItems").filter(r => r.week === week);
+    if (routedItems.length > 0) {
+      const existingItems = agenda.items || [];
+      const maxOrder = Math.max(0, ...existingItems.map(i => i.order));
+      const closingIdx = existingItems.findIndex(i => i.type === "closing");
+      const injected = routedItems.map((r, idx) => ({
+        order: maxOrder + idx + 1,
+        title: r.body.slice(0, 60),
+        duration: 5, type: "discussion",
+        owner: r.fromName,
+        notes: r.body,
+        fromText: true, collaborationFlag: false,
+      }));
+      // Insert before closing prayer if it exists, otherwise append
+      if (closingIdx !== -1) {
+        existingItems.splice(closingIdx, 0, ...injected);
+        existingItems.forEach((item, i) => { item.order = i + 1; });
+        agenda.items = existingItems;
+      } else {
+        agenda.items = [...existingItems, ...injected];
+      }
+      agenda.totalMinutes = (agenda.totalMinutes || 75) + routedItems.length * 5;
+    }
+
     const saved = insert("bishopricAgendas", {
       id: randomUUID(), week, ...agenda,
       generatedAt: new Date().toISOString(), status: "draft",
@@ -921,14 +947,29 @@ app.post("/api/bishopric/inbox/:id/route", (req, res) => {
   if (!item) return res.status(404).json({ error: "Not found" });
   update("bishopricInbox", item.id, { routed: true, routedTo: target, routedAt: new Date().toISOString() });
 
-  // Add as agenda item to target
   if (target === "bishopric") {
     const week = item.targetWeek || getWeekKey();
+
+    // Always persist as a round-table item for this week so the agenda
+    // generator picks it up even if no agenda exists yet.
+    insert("bishopricRoutedItems", {
+      id: randomUUID(),
+      week,
+      body: item.body,
+      fromName: item.fromName,
+      routedAt: new Date().toISOString(),
+    });
+
+    // Also append live to any existing agenda for this week
     const agendas = getAll("bishopricAgendas").filter(a => a.week === week);
     if (agendas.length > 0) {
       const agenda = agendas[0];
       const maxOrder = Math.max(0, ...(agenda.items || []).map(i => i.order));
-      const items = [...(agenda.items || []), { order: maxOrder + 1, title: item.body.slice(0, 60), duration: 5, type: "discussion", owner: item.fromName, notes: item.body, fromText: true, collaborationFlag: false }];
+      const items = [...(agenda.items || []), {
+        order: maxOrder + 1, title: item.body.slice(0, 60),
+        duration: 5, type: "discussion", owner: item.fromName,
+        notes: item.body, fromText: true, collaborationFlag: false,
+      }];
       update("bishopricAgendas", agenda.id, { items });
     }
   } else if (target === "wardcouncil") {
