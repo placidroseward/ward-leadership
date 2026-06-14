@@ -154,13 +154,39 @@ export default function BishopricAgendaBuilder({ api, week }) {
     setRoundTableItems(a.roundTableItems || []);
   }, [selected?.id]);
 
+  const pickRandom = (pool, excluded = []) => {
+    const avail = pool.filter(m => !excluded.includes(m.id));
+    if (avail.length === 0) return pool[0] || null;
+    return avail[Math.floor(Math.random() * avail.length)];
+  };
+
   const createNew = async () => {
+    // Fetch prayer pool (Bishopric + Ward Clerk + Executive Secretary) for random assignments
+    let randomAssignments = { openingPrayer: "", spiritualThought: "", closingPrayer: "" };
+    try {
+      const poolRes = await fetch(`${api}/api/bishopric/prayer-pool`);
+      const pool = await poolRes.json();
+      if (Array.isArray(pool) && pool.length > 0) {
+        const excluded = [];
+        const opening = pickRandom(pool, excluded);
+        if (opening) excluded.push(opening.id);
+        const thought = pickRandom(pool, excluded);
+        if (thought) excluded.push(thought.id);
+        const closing = pickRandom(pool, excluded);
+        randomAssignments = {
+          openingPrayer: opening?.name || "",
+          spiritualThought: thought?.name || "",
+          closingPrayer: closing?.name || "",
+        };
+      }
+    } catch { /* leave blank if fetch fails */ }
+
     const newAgenda = {
       week: week || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       title: `Bishopric Meeting — ${week || ""}`,
       status: "draft",
       generatedAt: new Date().toISOString(),
-      agendaData: { openingPrayer: "", spiritualThought: "", minutesNotes: "", calendarNotes: "", closingPrayer: "", roundTableItems: [] },
+      agendaData: { ...randomAssignments, minutesNotes: "", calendarNotes: "", roundTableItems: [] },
     };
     try {
       const res = await fetch(`${api}/api/bishopric/agendas/create`, {
@@ -168,7 +194,11 @@ export default function BishopricAgendaBuilder({ api, week }) {
         body: JSON.stringify(newAgenda),
       });
       const created = await res.json();
-      load(); setSelected(created); showToast("New agenda created");
+      load(); setSelected(created);
+      setOpeningPrayer(randomAssignments.openingPrayer);
+      setSpiritualThought(randomAssignments.spiritualThought);
+      setClosingPrayer(randomAssignments.closingPrayer);
+      showToast("New agenda created — prayer assignments randomly assigned");
     } catch {
       const local = { ...newAgenda, id: Date.now().toString() };
       setAgendas(prev => [local, ...prev]); setSelected(local);

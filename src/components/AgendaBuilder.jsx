@@ -151,7 +151,12 @@ export default function AgendaBuilder({ api, week }) {
         body: JSON.stringify({ week }),
       });
       const agenda = await res.json();
-      if (agenda.error) throw new Error(agenda.error);
+      if (agenda.error) {
+        if (agenda.error.includes("authentication_error") || agenda.error.includes("invalid x-api-key") || agenda.error.includes("401")) {
+          throw new Error("API key missing or invalid — set ANTHROPIC_API_KEY in Railway environment variables");
+        }
+        throw new Error(agenda.error);
+      }
       load();
       setSelected(agenda);
       showToast("Agenda generated!");

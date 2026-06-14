@@ -13,12 +13,13 @@ import WardCalendar from "./components/WardCalendar.jsx";
 const API = import.meta.env.VITE_API_URL || "";
 
 // Top nav. Entries with `councilOnly` are shown only to Ward Council members
-// (and admins). `restricted` is the Bishopric-only flag.
+// (and admins). `restricted` is the Bishopric-only flag. `adminOnly` is for admin-only tabs.
 const TOP_NAV = [
   { id: "wardcouncil", label: "Ward Council",  icon: "◈", councilOnly: true },
   { id: "mission",    label: "Mission Plan",  icon: "✦", councilOnly: true },
   { id: "bishopric",  label: "Bishopric",     icon: "◉", restricted: true },
   { id: "calendar",   label: "Ward Calendar", icon: "◎" },
+  { id: "users",      label: "Users",         icon: "◇", adminOnly: true },
 ];
 
 const SUBTABS = {
@@ -40,8 +41,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [showUsers, setShowUsers] = useState(false);
   const [lightMode, setLightMode] = useState(() => localStorage.getItem("lightMode") === "1");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [oneNoteUrl, setOneNoteUrl] = useState(() => localStorage.getItem("bishopric_onenote_url") || "");
   const [editingOneNote, setEditingOneNote] = useState(false);
   const [oneNoteDraft, setOneNoteDraft] = useState("");
@@ -79,6 +80,7 @@ export default function App() {
     const visible = TOP_NAV.filter(n => {
       if (n.restricted  && !isBishopric) return false;
       if (n.councilOnly && !isCouncil)   return false;
+      if (n.adminOnly   && user.role !== "admin") return false;
       return true;
     });
     if (!visible.find(n => n.id === topTab) && visible.length > 0) {
@@ -155,6 +157,7 @@ export default function App() {
   const visibleTopNav = TOP_NAV.filter(n => {
     if (n.restricted  && !canSeeBishopric(user))  return false;
     if (n.councilOnly && !canSeeWardCouncil(user)) return false;
+    if (n.adminOnly   && user.role !== "admin")    return false;
     return true;
   });
   const currentSubtabs = SUBTABS[topTab] || [];
@@ -193,12 +196,6 @@ export default function App() {
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div className="header-week hide-mobile">{week ? `Current: ${week}` : "Loading..."}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {user.role === "admin" && (
-                <button className="btn btn-ghost hide-mobile" style={{ fontSize: 10, padding: "4px 10px" }}
-                  onClick={() => setShowUsers(!showUsers)}>
-                  ◇ Users
-                </button>
-              )}
               <button onClick={() => setShowProfile(true)} style={{
                 width: 32, height: 32, borderRadius: "50%",
                 background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,232,190,0.4)",
@@ -228,7 +225,7 @@ export default function App() {
             <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
             {week && <div style={{ padding: "4px 16px 8px", fontSize: 11, color: "var(--text-muted)" }}>Week: {week}</div>}
             {user.role === "admin" && (
-              <button className="mobile-menu-btn" onClick={() => { setShowUsers(!showUsers); setMobileMenuOpen(false); }}>
+              <button className="mobile-menu-btn" onClick={() => { handleTopTab("users"); setMobileMenuOpen(false); }}>
                 ◇ User Management
               </button>
             )}
@@ -238,12 +235,7 @@ export default function App() {
           </div>
         )}
 
-        {showUsers && user.role === "admin" ? (
-          <div className="main scroll" style={{ padding: 0 }}>
-            <UserManager api={API} currentUser={user} />
-          </div>
-        ) : (
-          <>
+        <>
             {/* Top nav */}
             <nav className="nav">
               {visibleTopNav.map(n => (
@@ -400,12 +392,18 @@ export default function App() {
 
               {/* Ward Calendar */}
               {topTab === "calendar" && <WardCalendar api={API} />}
+
+              {/* Users tab — admin only */}
+              {topTab === "users" && user.role === "admin" && (
+                <div className="scroll" style={{ flex: 1, padding: 0 }}>
+                  <UserManager api={API} currentUser={user} />
+                </div>
+              )}
             </main>
           </>
-        )}
+
         {/* Bottom nav — mobile only */}
-        {!showUsers && (
-          <nav className="bottom-nav">
+        <nav className="bottom-nav">
             {visibleTopNav.map(n => (
               <button key={n.id}
                 className={`bottom-nav-btn${topTab === n.id ? " active" : ""}`}
@@ -415,7 +413,6 @@ export default function App() {
               </button>
             ))}
           </nav>
-        )}
       </div>
     </>
   );

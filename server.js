@@ -672,6 +672,27 @@ function getBishopricMembers() {
     }));
 }
 
+// Prayer pool for Bishopric agenda = Bishopric members + Ward Clerk + Executive Secretary
+function getBishopricPrayerPool() {
+  return getAll("users")
+    .filter(u => {
+      if (u.role === "bishopric") return true;
+      const calling = (u.calling || "").toLowerCase();
+      if (calling.includes("clerk")) return true;
+      if (calling.includes("executive secretary") || calling.includes("exec secretary")) return true;
+      return false;
+    })
+    .map(u => ({
+      id: u.id,
+      name: [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email,
+      calling: u.calling || "",
+    }));
+}
+
+app.get("/api/bishopric/prayer-pool", (req, res) => {
+  res.json(getBishopricPrayerPool());
+});
+
 app.get("/api/bishopric/agendas", (req, res) => {
   res.json(getAll("bishopricAgendas").sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt)));
 });
