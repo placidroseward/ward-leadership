@@ -129,6 +129,10 @@ export default function BishopricAgendaBuilder({ api, week }) {
   const [spiritualThought, setSpiritualThought] = useState("");
   const [minutesNotes, setMinutesNotes] = useState("");
   const [calendarNotes, setCalendarNotes] = useState("");
+  const [oneNotePreview, setOneNotePreview] = useState(null); // { title, content, receivedAt }
+  const [manualNotes, setManualNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [closingPrayer, setClosingPrayer] = useState("");
   const [roundTableItems, setRoundTableItems] = useState([]);
 
@@ -139,6 +143,13 @@ export default function BishopricAgendaBuilder({ api, week }) {
       setAgendas(data);
     }).catch(() => {});
     fetch(`${api}/api/bishopric/inbox`).then(r => r.json()).then(setInboxItems).catch(() => {});
+    fetch(`${api}/api/bishopric/onenote/latest`).then(r => r.json()).then(data => {
+      if (data) setOneNotePreview(data);
+    }).catch(() => {});
+    fetch(`${api}/api/bishopric/notes`).then(r => r.json()).then(data => {
+      const thisWeek = data.find ? data.find(n => n) : data;
+      if (thisWeek?.text) setManualNotes(thisWeek.text);
+    }).catch(() => {});
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
@@ -259,6 +270,18 @@ export default function BishopricAgendaBuilder({ api, week }) {
     showToast("Item dismissed");
   };
 
+  const saveManualNotes = async () => {
+    setSavingNotes(true);
+    try {
+      await fetch(`${api}/api/bishopric/notes`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: manualNotes }),
+      });
+      showToast("Notes saved — will populate Section 4 on next Generate");
+    } catch { showToast("Error saving notes"); }
+    setSavingNotes(false);
+  };
+
   return (
     <div className="split-layout" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {toast && <div className="toast">{toast}</div>}
@@ -290,6 +313,49 @@ export default function BishopricAgendaBuilder({ api, week }) {
             ))}
           </div>
         )}
+
+        {/* OneNote / Notes panel */}
+        <div style={{ marginBottom: 16, background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+          <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", borderBottom: notesExpanded ? "1px solid var(--border)" : "none" }}
+            onClick={() => setNotesExpanded(e => !e)}>
+            <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: oneNotePreview ? "var(--gold)" : "var(--text-muted)" }}>
+              📓 {oneNotePreview ? "OneNote ✓" : "Meeting Notes"}
+            </span>
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{notesExpanded ? "▲" : "▼"}</span>
+          </div>
+          {notesExpanded && (
+            <div style={{ padding: 10 }}>
+              {oneNotePreview && (
+                <div style={{ marginBottom: 8, padding: "6px 8px", background: "var(--surface3)", borderRadius: "var(--radius)", borderLeft: "2px solid var(--gold)" }}>
+                  <div style={{ fontSize: 10, color: "var(--gold)", marginBottom: 2 }}>From OneNote</div>
+                  <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 2, fontWeight: 500 }}>{oneNotePreview.title}</div>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>
+                    {new Date(oneNotePreview.receivedAt).toLocaleDateString()}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--text-dim)", lineHeight: 1.5, maxHeight: 80, overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {(oneNotePreview.content || "").slice(0, 200)}{oneNotePreview.content?.length > 200 ? "…" : ""}
+                  </div>
+                  <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 4 }}>
+                    This will auto-populate Section 4 on Generate
+                  </div>
+                </div>
+              )}
+              <div className="label" style={{ marginBottom: 4 }}>Manual Notes Override</div>
+              <textarea className="input" style={{ minHeight: 70, fontSize: 11, marginBottom: 6 }}
+                placeholder="Paste meeting notes here to override OneNote content…"
+                value={manualNotes} onChange={e => setManualNotes(e.target.value)} />
+              <button className="btn btn-gold" style={{ width: "100%", fontSize: 10, padding: "5px 0" }}
+                onClick={saveManualNotes} disabled={savingNotes}>
+                {savingNotes ? "Saving…" : "Save Notes"}
+              </button>
+              {!oneNotePreview && (
+                <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
+                  No OneNote page received yet. Make sure the Make scenario has run, or paste notes manually above.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="label" style={{ marginBottom: 8 }}>Agendas</div>
         {agendas.length === 0 && (
@@ -346,13 +412,7 @@ export default function BishopricAgendaBuilder({ api, week }) {
                 value={spiritualThought} onChange={e => setSpiritualThought(e.target.value)} />
             </Section>
 
-            <Section number="3" title="Review Previous Minutes & Unresolved Items" color="var(--rs)">
-              <textarea className="input" style={{ minHeight: 80 }}
-                placeholder="Notes on previous minutes or unresolved action items..."
-                value={minutesNotes} onChange={e => setMinutesNotes(e.target.value)} />
-            </Section>
-
-            <Section number="4" title="Review Sacrament Meeting Program" color="var(--eq)">
+            <Section number="3" title="Review Sacrament Meeting Program" color="var(--eq)">
               <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 10, lineHeight: 1.6 }}>
                 Review the upcoming program in the Sacrament Program tab, or open the scheduling spreadsheet directly.
               </div>
@@ -363,6 +423,12 @@ export default function BishopricAgendaBuilder({ api, week }) {
               }}>
                 ↗ Open Scheduling Spreadsheet
               </a>
+            </Section>
+
+            <Section number="4" title="Review Previous Minutes & Unresolved Items" color="var(--rs)">
+              <textarea className="input" style={{ minHeight: 80 }}
+                placeholder="Notes on previous minutes or unresolved action items..."
+                value={minutesNotes} onChange={e => setMinutesNotes(e.target.value)} />
             </Section>
 
             <Section number="5" title="Discuss Ward Calendar" color="var(--yw)">

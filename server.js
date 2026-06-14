@@ -717,16 +717,17 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
   const goals = getAll("bishopricGoals");
   const inboxItems = getAll("bishopricInbox").filter(i => !i.routed && (i.targetWeek === week || !i.targetWeek));
 
-  // Fetch notes — prefer manual bishopricNotes for the week, fall back to
+  // Fetch notes — prefer manual bishopricNotes (most recent, any week), fall back to
   // the most recent OneNote page received via the Make webhook.
   let notesText = "";
-  const notes = getAll("bishopricNotes").filter(n => n.week === week);
-  if (notes.length > 0) {
-    const latest = notes[notes.length - 1];
-    if (latest.text) notesText = latest.text;
-    else if (latest.url) {
+  const allNotes = getAll("bishopricNotes").sort((a, b) =>
+    new Date(b.updatedAt || b.addedAt || 0) - new Date(a.updatedAt || a.addedAt || 0));
+  const latestNote = allNotes[0];
+  if (latestNote) {
+    if (latestNote.text) notesText = latestNote.text;
+    else if (latestNote.url) {
       try {
-        const r = await fetch(latest.url);
+        const r = await fetch(latestNote.url);
         notesText = (await r.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
       } catch { notesText = `[Notes URL provided but could not be fetched]`; }
     }
@@ -737,7 +738,9 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
       .sort((a, b) => new Date(b.receivedAt) - new Date(a.receivedAt));
     if (oneNotePages.length > 0) {
       const latestPage = oneNotePages[0];
-      notesText = `[From OneNote — "${latestPage.title}" (${latestPage.pageCreatedAt?.slice(0,10)})]\n\n${latestPage.content}`.slice(0, 3000);
+      notesText = `[From OneNote — "${latestPage.title}" (${latestPage.pageCreatedAt?.slice(0,10)})]
+
+${latestPage.content}`.slice(0, 3000);
       console.log(`[ONENOTE] Using page "${latestPage.title}" for agenda generation`);
     }
   }
@@ -835,8 +838,9 @@ app.get("/api/bishopric/notes", (req, res) => {
 });
 
 app.post("/api/bishopric/notes", (req, res) => {
-  const { week, url, text } = req.body;
-  if (!week || (!url && !text)) return res.status(400).json({ error: "week and url or text required" });
+  const { url, text } = req.body;
+  const week = req.body.week || getWeekKey();
+  if (!url && !text) return res.status(400).json({ error: "url or text required" });
   const existing = getAll("bishopricNotes").find(n => n.week === week);
   if (existing) return res.json(update("bishopricNotes", existing.id, { url: url || null, text: text || null, updatedAt: new Date().toISOString() }));
   res.json(insert("bishopricNotes", { id: randomUUID(), week, url: url || null, text: text || null, addedAt: new Date().toISOString() }));
