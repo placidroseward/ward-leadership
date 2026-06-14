@@ -167,8 +167,10 @@ export default function BishopricAgendaBuilder({ api, week }) {
 
   const pickRandom = (pool, excluded = []) => {
     const avail = pool.filter(m => !excluded.includes(m.id));
-    if (avail.length === 0) return pool[0] || null;
-    return avail[Math.floor(Math.random() * avail.length)];
+    // If pool is exhausted, cycle back through excluding only the last pick
+    const candidates = avail.length > 0 ? avail : pool.filter(m => m.id !== excluded[excluded.length - 1]);
+    if (candidates.length === 0) return pool[Math.floor(Math.random() * pool.length)];
+    return candidates[Math.floor(Math.random() * candidates.length)];
   };
 
   const createNew = async () => {

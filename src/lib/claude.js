@@ -264,10 +264,11 @@ export async function generateBishopricAgenda({ pulseResponses, goals, weekKey, 
 
   function pickUnique(pool, excluded) {
     const avail = pool.filter(m => !excluded.includes(m.id));
-    if (avail.length === 0) return null;
-    return avail[Math.floor(Math.random() * avail.length)];
+    // If pool exhausted, cycle back excluding only the most recent pick
+    const candidates = avail.length > 0 ? avail : pool.filter(m => m.id !== excluded[excluded.length - 1]);
+    if (candidates.length === 0) return pool[Math.floor(Math.random() * pool.length)] || null;
+    return candidates[Math.floor(Math.random() * candidates.length)];
   }
-
   const excluded = [];
   const opening  = pickUnique(POOL, excluded); if (opening)  excluded.push(opening.id);
   const thought  = pickUnique(POOL, excluded); if (thought)  excluded.push(thought.id);
