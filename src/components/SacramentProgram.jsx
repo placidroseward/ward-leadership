@@ -106,11 +106,11 @@ function mergeEdits(local, server) {
   try {
     const raw = localStorage.getItem(`sp_edits_${dateKey}`);
     return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+  } catch (e) { return {}; }
 }
 
 function saveEdits(dateKey, edits) {
-  try { localStorage.setItem(`sp_edits_${dateKey}`, JSON.stringify(edits)); } catch {}
+  try { localStorage.setItem(`sp_edits_${dateKey}`, JSON.stringify(edits)); } catch (e) {}
 }
 
 // ─── Section divider ─────────────────────────────────────────────────────────
