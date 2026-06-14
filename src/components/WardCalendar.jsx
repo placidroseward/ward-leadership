@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -8,12 +8,34 @@ const EVENT_COLORS = [
   "#C97B5A", "#6B9E9E", "#9E7B6B", "#A05A5A",
 ];
 
+// Convert whatever date format Google Calendar or our DB returns into
+// a datetime-local string (YYYY-MM-DDTHH:MM)
+function toLocalInput(val) {
+  if (!val) return "";
+  // Google Calendar returns { dateTime: "..." } or { date: "..." }
+  const raw = typeof val === "object" ? (val.dateTime || val.date || "") : val;
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "";
+  // Format as YYYY-MM-DDTHH:MM in local time
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Get a plain JS Date from an event's start field (handles Google or local format)
+function eventStartDate(ev) {
+  if (!ev?.start) return null;
+  const raw = typeof ev.start === "object" ? (ev.start.dateTime || ev.start.date || "") : ev.start;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function EventModal({ event, onSave, onDelete, onClose }) {
   const isNew = !event.id;
   const [form, setForm] = useState({
-    title: event.title || "",
-    start: event.start || "",
-    end: event.end || "",
+    title: event.title || event.summary || "",
+    start: toLocalInput(event.start),
+    end: toLocalInput(event.end),
     location: event.location || "",
     description: event.description || "",
     color: event.color || EVENT_COLORS[0],
@@ -104,15 +126,34 @@ function EventModal({ event, onSave, onDelete, onClose }) {
   );
 }
 
-function CalendarDay({ day, events, isToday, isCurrentMonth, onDayClick, onEventClick }) {
+function CalendarDay({ day, events, isToday, isCurrentMonth, onDayClick, onEventClick, onEventDrop }) {
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+  const handleDragLeave = () => setDragOver(false);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const eventId = e.dataTransfer.getData("eventId");
+    if (eventId) onEventDrop(eventId, day);
+  };
+
   return (
     <div
       onClick={() => onDayClick(day)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       style={{
         minHeight: 90, padding: "6px 8px",
-        background: isToday ? "var(--gold-glow)" : isCurrentMonth ? "var(--surface2)" : "var(--surface)",
-        border: `1px solid ${isToday ? "var(--gold-dim)" : "var(--border)"}`,
-        cursor: "pointer", transition: "background 0.1s",
+        background: dragOver
+          ? "var(--gold-glow)"
+          : isToday ? "var(--gold-glow)" : isCurrentMonth ? "var(--surface2)" : "var(--surface)",
+        border: `1px solid ${dragOver ? "var(--gold)" : isToday ? "var(--gold-dim)" : "var(--border)"}`,
+        cursor: "pointer", transition: "background 0.1s, border 0.1s",
         overflow: "hidden",
       }}
     >
@@ -122,15 +163,25 @@ function CalendarDay({ day, events, isToday, isCurrentMonth, onDayClick, onEvent
         marginBottom: 4,
       }}>{day.getDate()}</div>
       {events.slice(0, 3).map(ev => (
-        <div key={ev.id} onClick={e => { e.stopPropagation(); onEventClick(ev); }} style={{
-          fontSize: 10, padding: "2px 5px", borderRadius: 2,
-          background: (ev.color || EVENT_COLORS[0]) + "30",
-          color: ev.color || EVENT_COLORS[0],
-          border: `1px solid ${(ev.color || EVENT_COLORS[0]) + "60"}`,
-          marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          cursor: "pointer",
-        }}>
-          {ev.title}
+        <div
+          key={ev.id}
+          draggable
+          onDragStart={e => {
+            e.stopPropagation();
+            e.dataTransfer.setData("eventId", ev.id);
+            e.dataTransfer.effectAllowed = "move";
+          }}
+          onClick={e => { e.stopPropagation(); onEventClick(ev); }}
+          style={{
+            fontSize: 10, padding: "2px 5px", borderRadius: 2,
+            background: (ev.color || EVENT_COLORS[0]) + "30",
+            color: ev.color || EVENT_COLORS[0],
+            border: `1px solid ${(ev.color || EVENT_COLORS[0]) + "60"}`,
+            marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            cursor: "grab",
+          }}
+        >
+          {ev.title || ev.summary}
         </div>
       ))}
       {events.length > 3 && (
@@ -155,7 +206,7 @@ export default function WardCalendar({ api }) {
       const res = await fetch(`${api}/api/calendar/events`);
       const data = await res.json();
       setEvents(Array.isArray(data) ? data : (data.events || []));
-    } catch { setEvents([]); }
+    } catch (e) { setEvents([]); }
     setLoading(false);
   }, [api]);
 
@@ -184,7 +235,47 @@ export default function WardCalendar({ api }) {
       showToast("Event deleted");
       setModalEvent(null);
       load();
-    } catch { showToast("Error deleting event"); }
+    } catch (e) { showToast("Error deleting event"); }
+  };
+
+  // Drag-and-drop: move event to a new day, preserving the time
+  const handleEventDrop = async (eventId, newDay) => {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
+    const oldStart = eventStartDate(ev);
+    if (!oldStart) return;
+
+    // Compute duration so end moves with start
+    const oldEnd = eventStartDate({ start: ev.end });
+    const durationMs = oldEnd ? (oldEnd - oldStart) : 3600000;
+
+    const newStart = new Date(newDay);
+    newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0);
+    const newEnd = new Date(newStart.getTime() + durationMs);
+
+    const pad = n => String(n).padStart(2, "0");
+    const toInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+    const form = {
+      title: ev.title || ev.summary || "",
+      start: toInput(newStart),
+      end: toInput(newEnd),
+      location: ev.location || "",
+      description: ev.description || "",
+      color: ev.color || EVENT_COLORS[0],
+    };
+
+    try {
+      const res = await fetch(`${api}/api/calendar/events/${eventId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      showToast("Event moved");
+      load();
+    } catch (e) { showToast("Error moving event: " + e.message); }
   };
 
   // Build calendar grid
@@ -195,34 +286,39 @@ export default function WardCalendar({ api }) {
   const startPad = firstDay.getDay();
   const days = [];
 
-  for (let i = startPad - 1; i >= 0; i--) {
-    days.push(new Date(year, month, -i));
-  }
-  for (let d = 1; d <= lastDay.getDate(); d++) {
-    days.push(new Date(year, month, d));
-  }
+  for (let i = startPad - 1; i >= 0; i--) days.push(new Date(year, month, -i));
+  for (let d = 1; d <= lastDay.getDate(); d++) days.push(new Date(year, month, d));
   const endPad = 42 - days.length;
-  for (let i = 1; i <= endPad; i++) {
-    days.push(new Date(year, month + 1, i));
-  }
+  for (let i = 1; i <= endPad; i++) days.push(new Date(year, month + 1, i));
 
   const today = new Date();
+
   const getEventsForDay = (day) => {
     return events.filter(ev => {
-      const evDate = new Date(ev.start);
-      return evDate.getFullYear() === day.getFullYear() &&
-             evDate.getMonth() === day.getMonth() &&
-             evDate.getDate() === day.getDate();
+      const d = eventStartDate(ev);
+      return d && d.getFullYear() === day.getFullYear()
+               && d.getMonth() === day.getMonth()
+               && d.getDate() === day.getDate();
     });
   };
 
-  const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
-  const goToday = () => setViewDate(new Date());
-
   const handleDayClick = (day) => {
-    const dateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,"0")}-${String(day.getDate()).padStart(2,"0")}T09:00`;
+    const pad = n => String(n).padStart(2, "0");
+    const dateStr = `${day.getFullYear()}-${pad(day.getMonth()+1)}-${pad(day.getDate())}T09:00`;
     setModalEvent({ start: dateStr, end: "", title: "", location: "", description: "", color: EVENT_COLORS[0] });
+  };
+
+  const handleEventClick = (ev) => {
+    // Normalize to a flat object with datetime-local-friendly strings
+    setModalEvent({
+      id: ev.id,
+      title: ev.title || ev.summary || "",
+      start: toLocalInput(ev.start),
+      end: toLocalInput(ev.end),
+      location: ev.location || "",
+      description: ev.description || "",
+      color: ev.color || EVENT_COLORS[0],
+    });
   };
 
   return (
@@ -244,12 +340,12 @@ export default function WardCalendar({ api }) {
         background: "var(--surface)", flexShrink: 0,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button className="btn btn-ghost" onClick={prevMonth}>‹</button>
+          <button className="btn btn-ghost" onClick={() => setViewDate(new Date(year, month - 1, 1))}>‹</button>
           <span style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text)", minWidth: 200, textAlign: "center" }}>
             {MONTHS[month]} {year}
           </span>
-          <button className="btn btn-ghost" onClick={nextMonth}>›</button>
-          <button className="btn btn-outline" style={{ fontSize: 10 }} onClick={goToday}>Today</button>
+          <button className="btn btn-ghost" onClick={() => setViewDate(new Date(year, month + 1, 1))}>›</button>
+          <button className="btn btn-outline" style={{ fontSize: 10 }} onClick={() => setViewDate(new Date())}>Today</button>
         </div>
         <button className="btn btn-gold" onClick={() => setModalEvent({ start: "", end: "", title: "", location: "", description: "", color: EVENT_COLORS[0] })}>
           + New Event
@@ -285,7 +381,8 @@ export default function WardCalendar({ api }) {
                 isToday={day.toDateString() === today.toDateString()}
                 isCurrentMonth={day.getMonth() === month}
                 onDayClick={handleDayClick}
-                onEventClick={(ev) => setModalEvent(ev)}
+                onEventClick={handleEventClick}
+                onEventDrop={handleEventDrop}
               />
             ))}
           </div>
