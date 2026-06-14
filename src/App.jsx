@@ -603,7 +603,12 @@ function getStyles(lm) {
         flex: none !important;
         height: auto !important;
         min-height: 400px;
+        overflow: visible !important;
       }
+      /* Allow the main content area to scroll naturally on mobile */
+      .main { overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+      /* Inner scroll divs should not double-scroll on mobile */
+      .split-layout .scroll { overflow: visible !important; height: auto !important; }
 
       /* Back button — mobile only */
       .mobile-back-btn { display: inline-flex !important; }
