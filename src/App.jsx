@@ -12,12 +12,14 @@ import WardCalendar from "./components/WardCalendar.jsx";
 
 const API = import.meta.env.VITE_API_URL || "";
 
-// Top nav. Entries with `councilOnly` are shown only to Ward Council members
-// (and admins). `restricted` is the Bishopric-only flag. `adminOnly` is for admin-only tabs.
+const BISHOPRIC_ORGS = new Set(["bishopric", "exec_secretary", "ward_clerk"]);
+const COUNCIL_ORGS   = new Set(["bishopric", "exec_secretary", "ward_clerk", "relief_society", "elders_quorum", "young_women", "primary", "sunday_school", "ward_mission"]);
+
+// Tab access is determined by orgKey. adminOnly tabs require role=admin.
 const TOP_NAV = [
   { id: "wardcouncil", label: "Ward Council",  icon: "◈", councilOnly: true },
   { id: "mission",    label: "Mission Plan",  icon: "✦", councilOnly: true },
-  { id: "bishopric",  label: "Bishopric",     icon: "◉", restricted: true },
+  { id: "bishopric",  label: "Bishopric",     icon: "◉", bishopricOnly: true },
   { id: "calendar",   label: "Ward Calendar", icon: "◎" },
   { id: "users",      label: "Users",         icon: "◇", adminOnly: true },
 ];
@@ -74,12 +76,10 @@ export default function App() {
   // the rules of hooks.
   useEffect(() => {
     if (!user) return;
-    const isCouncil   = user.role === "admin" || !!user.isWardCouncil;
-    const isBishopric = user.role === "admin" || user.role === "bishopric";
     const visible = TOP_NAV.filter(n => {
-      if (n.restricted  && !isBishopric) return false;
-      if (n.councilOnly && !isCouncil)   return false;
-      if (n.adminOnly   && user.role !== "admin") return false;
+      if (n.bishopricOnly && !BISHOPRIC_ORGS.has(user.orgKey) && user.role !== "admin") return false;
+      if (n.councilOnly   && !COUNCIL_ORGS.has(user.orgKey)   && user.role !== "admin") return false;
+      if (n.adminOnly     && user.role !== "admin") return false;
       return true;
     });
     if (!visible.find(n => n.id === topTab) && visible.length > 0) {
@@ -124,16 +124,14 @@ export default function App() {
 
   const canSeeBishopric = (u) => {
     if (!u) return false;
-    // Bishopric tab is gated on role. Admins also see it so they don't lock
-    // themselves out while managing the app.
-    return u.role === "bishopric" || u.role === "admin";
+    if (u.role === "admin") return true;
+    return BISHOPRIC_ORGS.has(u.orgKey);
   };
 
   const canSeeWardCouncil = (u) => {
     if (!u) return false;
-    // Ward Council + Mission Plan are gated on the isWardCouncil flag.
-    // Admins see them regardless so they can administer the app.
-    return u.role === "admin" || !!u.isWardCouncil;
+    if (u.role === "admin") return true;
+    return COUNCIL_ORGS.has(u.orgKey);
   };
 
   const handleTopTab = (id) => {
@@ -154,9 +152,9 @@ export default function App() {
   );
 
   const visibleTopNav = TOP_NAV.filter(n => {
-    if (n.restricted  && !canSeeBishopric(user))  return false;
-    if (n.councilOnly && !canSeeWardCouncil(user)) return false;
-    if (n.adminOnly   && user.role !== "admin")    return false;
+    if (n.bishopricOnly && !canSeeBishopric(user)) return false;
+    if (n.councilOnly   && !canSeeWardCouncil(user)) return false;
+    if (n.adminOnly     && user.role !== "admin")    return false;
     return true;
   });
   const currentSubtabs = SUBTABS[topTab] || [];

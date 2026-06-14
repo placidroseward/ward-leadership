@@ -90,13 +90,14 @@ try {
   console.error("[MIGRATE] Error:", err.message);
 }
 
-// Ward-council members are users where isWardCouncil === true. This is the
-// single source of truth used by pulse routing, agenda generation, and the
-// manual-pulse dropdown. Returned in the legacy member shape so callers that
-// expect id/name/org/orgKey/orgColor/phone/carrier keep working unchanged.
+// Ward-council members are users whose orgKey is in the council org set.
+// Returned in the legacy member shape so callers that expect
+// id/name/org/orgKey/orgColor/phone/carrier keep working unchanged.
+const COUNCIL_ORG_KEYS = new Set(["bishopric","exec_secretary","ward_clerk","relief_society","elders_quorum","young_women","primary","sunday_school","ward_mission"]);
+function isWardCouncilMember(u) { return COUNCIL_ORG_KEYS.has(u.orgKey); }
 function getMembers() {
   return getAll("users")
-    .filter(u => u.isWardCouncil)
+    .filter(isWardCouncilMember)
     .map(u => ({
       id: u.id,
       name: [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email,
@@ -312,18 +313,16 @@ app.get("/api/orgs", (req, res) => {
 });
 
 app.post("/api/users", requireAdmin, (req, res) => {
-  const { firstName, lastName, email, calling, phone, role, carrier,
-          isWardCouncil, orgKey } = req.body;
+  const { firstName, lastName, email, calling, phone, role, carrier, orgKey } = req.body;
   if (!email || !firstName) return res.status(400).json({ error: "First name and email required" });
   const existing = getAll("users").find(u => u.email.toLowerCase() === email.toLowerCase());
   if (existing) return res.status(409).json({ error: "A user with that email already exists" });
-  const orgInfo = isWardCouncil ? resolveOrg(orgKey) : { orgKey: "", org: "", orgColor: "" };
+  const orgInfo = orgKey ? resolveOrg(orgKey) : { orgKey: "", org: "", orgColor: "" };
   const user = insert("users", {
     id: randomUUID(),
     firstName, lastName: lastName || "", email: email.toLowerCase(),
     calling: calling || "", phone: phone || "", carrier: carrier || "",
-    role: ["admin", "bishopric"].includes(role) ? role : "user",
-    isWardCouncil: !!isWardCouncil,
+    role: role === "admin" ? "admin" : "user",
     orgKey: orgInfo.orgKey, org: orgInfo.org, orgColor: orgInfo.orgColor,
     passwordHash: null, stayLoggedIn: false,
     createdAt: new Date().toISOString(),
@@ -341,15 +340,15 @@ app.put("/api/users/:id", (req, res) => {
   const { passwordHash, ...allowed } = req.body;
   // When ward-council membership or org changes, derive org/orgColor from the
   // canonical catalog so UI-supplied values stay consistent.
-  if ("isWardCouncil" in allowed || "orgKey" in allowed) {
-    const willBeOnCouncil = "isWardCouncil" in allowed ? !!allowed.isWardCouncil : !!existing.isWardCouncil;
-    const keyToResolve   = "orgKey" in allowed ? allowed.orgKey : existing.orgKey;
-    const orgInfo = willBeOnCouncil ? resolveOrg(keyToResolve) : { orgKey: "", org: "", orgColor: "" };
-    allowed.isWardCouncil = willBeOnCouncil;
+  if ("orgKey" in allowed) {
+    const keyToResolve = allowed.orgKey || "";
+    const orgInfo = keyToResolve ? resolveOrg(keyToResolve) : { orgKey: "", org: "", orgColor: "" };
     allowed.orgKey   = orgInfo.orgKey;
     allowed.org      = orgInfo.org;
     allowed.orgColor = orgInfo.orgColor;
   }
+  // Normalize role to admin or user only
+  if ("role" in allowed) allowed.role = allowed.role === "admin" ? "admin" : "user";
   const updated = update("users", req.params.id, allowed);
   res.json(safeUser(updated));
 });

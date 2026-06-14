@@ -7,8 +7,7 @@ function EditUserModal({ user, api, currentUser, orgs, onSave, onClose }) {
     email: user.email || "",
     calling: user.calling || "",
     phone: user.phone || "",
-    role: user.role || "user",
-    isWardCouncil: !!user.isWardCouncil,
+    role: user.role === "admin" ? "admin" : "user",
     orgKey: user.orgKey || "",
   });
   const [msg, setMsg] = useState(null);
@@ -69,7 +68,6 @@ function EditUserModal({ user, api, currentUser, orgs, onSave, onClose }) {
           </span>
           <button className="btn btn-ghost" style={{ padding: "4px 10px" }} onClick={onClose}>✕</button>
         </div>
-
         <div style={{ padding: 24 }}>
           <div className="two-col" style={{ marginBottom: 14 }}>
             <div>
@@ -99,39 +97,23 @@ function EditUserModal({ user, api, currentUser, orgs, onSave, onClose }) {
               <select className="input" value={form.role} onChange={e => f("role", e.target.value)}
                 disabled={user.id === currentUser.id}>
                 <option value="user">User</option>
-                <option value="bishopric">Bishopric</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
           </div>
-
           <div className="field">
-            <label className="label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-              <input type="checkbox" checked={!!form.isWardCouncil}
-                onChange={e => f("isWardCouncil", e.target.checked)} />
-              Member of Ward Council
-            </label>
+            <label className="label">Organization</label>
+            <select className="input" value={form.orgKey || ""} onChange={e => f("orgKey", e.target.value)}>
+              <option value="">— No organization —</option>
+              {orgs.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
+            </select>
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-              Grants access to the Ward Council and Mission Plan tabs, and adds this user to the pulse + agenda roster.
+              Determines tab access. Bishopric, Executive Secretary, and Ward Clerk see the Bishopric tab. All other orgs see Ward Council and Mission Plan.
             </div>
           </div>
-          {form.isWardCouncil && (
-            <div className="field">
-              <label className="label">Organization</label>
-              <select className="input" value={form.orgKey || ""} onChange={e => f("orgKey", e.target.value)}>
-                <option value="">— Select organization —</option>
-                {orgs.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
-              </select>
-            </div>
-          )}
-
           {msg && (
-            <div style={{
-              fontSize: 11, marginBottom: 14,
-              color: msg.startsWith("Error") ? "var(--danger)" : "var(--success)"
-            }}>{msg}</div>
+            <div style={{ fontSize: 11, marginBottom: 14, color: msg.startsWith("Error") ? "var(--danger)" : "var(--success)" }}>{msg}</div>
           )}
-
           <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center" }}>
             <button className="btn btn-ghost" style={{ fontSize: 10, color: "var(--text-muted)" }}
               onClick={resetPassword} disabled={resetting}>
@@ -153,11 +135,9 @@ function EditUserModal({ user, api, currentUser, orgs, onSave, onClose }) {
 export default function UserManager({ api, currentUser }) {
   const [users, setUsers] = useState([]);
   const [orgs, setOrgs] = useState([]);
-
   const [form, setForm] = useState({
     firstName: "", lastName: "", email: "", calling: "",
-    phone: "", role: "user",
-    isWardCouncil: false, orgKey: "",
+    phone: "", role: "user", orgKey: "",
   });
   const [msg, setMsg] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -185,11 +165,7 @@ export default function UserManager({ api, currentUser }) {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setForm({
-        firstName: "", lastName: "", email: "", calling: "",
-        phone: "", role: "user",
-        isWardCouncil: false, orgKey: "",
-      });
+      setForm({ firstName: "", lastName: "", email: "", calling: "", phone: "", role: "user", orgKey: "" });
       setMsg("User added — they can set their password on first login");
       setTimeout(() => setMsg(null), 3000);
       load();
@@ -213,10 +189,9 @@ export default function UserManager({ api, currentUser }) {
           onSave={load} onClose={() => setEditingUser(null)}
         />
       )}
-
       <div style={{ fontFamily: "var(--font-display)", fontSize: 20, color: "var(--text)", marginBottom: 6 }}>User Management</div>
       <div style={{ fontSize: 12, color: "var(--text-dim)", marginBottom: 24 }}>
-        Add users who can access this dashboard. They will set their own password on first login.
+        Tab access is determined by organization. Bishopric orgs see the Bishopric tab; all others see Ward Council and Mission Plan.
       </div>
 
       {/* Add user form */}
@@ -251,32 +226,20 @@ export default function UserManager({ api, currentUser }) {
             <label className="label">Role</label>
             <select className="input" value={form.role} onChange={e => f("role", e.target.value)}>
               <option value="user">User</option>
-              <option value="bishopric">Bishopric</option>
               <option value="admin">Admin</option>
             </select>
           </div>
         </div>
-
         <div className="field" style={{ marginBottom: 12 }}>
-          <label className="label" style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-            <input type="checkbox" checked={!!form.isWardCouncil}
-              onChange={e => f("isWardCouncil", e.target.checked)} />
-            Member of Ward Council
-          </label>
+          <label className="label">Organization</label>
+          <select className="input" value={form.orgKey || ""} onChange={e => f("orgKey", e.target.value)}>
+            <option value="">— No organization —</option>
+            {orgs.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
+          </select>
           <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-            Grants access to the Ward Council and Mission Plan tabs, and adds this user to the pulse + agenda roster.
+            Bishopric, Executive Secretary, and Ward Clerk orgs grant Bishopric tab access. All other orgs grant Ward Council and Mission Plan access.
           </div>
         </div>
-        {form.isWardCouncil && (
-          <div className="field" style={{ marginBottom: 12 }}>
-            <label className="label">Organization</label>
-            <select className="input" value={form.orgKey || ""} onChange={e => f("orgKey", e.target.value)}>
-              <option value="">— Select organization —</option>
-              {orgs.map(o => <option key={o.key} value={o.key}>{o.name}</option>)}
-            </select>
-          </div>
-        )}
-
         {msg && <div style={{ fontSize: 11, color: msg.startsWith("Error") ? "var(--danger)" : "var(--success)", marginBottom: 10 }}>{msg}</div>}
         <button className="btn btn-gold" onClick={add}>Add User</button>
       </div>
@@ -309,13 +272,13 @@ export default function UserManager({ api, currentUser }) {
             </div>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>{u.email}</div>
             {u.calling && <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{u.calling}</div>}
-            {u.isWardCouncil && (
+            {u.org && (
               <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
                 <span style={{
                   display: "inline-block", width: 8, height: 8, borderRadius: "50%",
                   background: u.orgColor || "var(--text-muted)", marginRight: 6, verticalAlign: "middle",
                 }} />
-                <span style={{ verticalAlign: "middle" }}>Ward Council{u.org ? ` · ${u.org}` : ""}</span>
+                <span style={{ verticalAlign: "middle" }}>{u.org}</span>
               </div>
             )}
             {u.phone && (
@@ -327,9 +290,9 @@ export default function UserManager({ api, currentUser }) {
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <span style={{
               fontSize: 10, padding: "2px 8px", borderRadius: 2,
-              background: u.role === "admin" ? "rgba(201,168,76,0.15)" : u.role === "bishopric" ? "rgba(201,168,76,0.08)" : "var(--surface3)",
-              color: u.role === "admin" ? "var(--gold)" : u.role === "bishopric" ? "var(--gold)" : "var(--text-muted)",
-              border: `1px solid ${u.role === "admin" ? "var(--gold-dim)" : u.role === "bishopric" ? "var(--gold-dim)" : "var(--border)"}`,
+              background: u.role === "admin" ? "rgba(201,168,76,0.15)" : "var(--surface3)",
+              color: u.role === "admin" ? "var(--gold)" : "var(--text-muted)",
+              border: `1px solid ${u.role === "admin" ? "var(--gold-dim)" : "var(--border)"}`,
               letterSpacing: "0.1em",
             }}>
               {u.role || "user"}
