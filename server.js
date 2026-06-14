@@ -112,7 +112,7 @@ function getMembers() {
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: false }));
 
 // ─── Serve built frontend in production ───────────────────────────────────────
@@ -1108,13 +1108,33 @@ app.get("/api/sacrament/edits/:sundayKey", (req, res) => {
 
 // Manual save from the UI (supplements GroupMe edits)
 app.put("/api/sacrament/edits/:sundayKey", (req, res) => {
-  const existing = getAll("sacramentEdits").find(e => e.sundayKey === req.params.sundayKey);
-  if (existing) {
-    const updated = update("sacramentEdits", existing.id, { ...req.body, lastUpdated: new Date().toISOString() });
-    res.json(updated);
-  } else {
-    const inserted = insert("sacramentEdits", { id: randomUUID(), sundayKey: req.params.sundayKey, ...req.body, lastUpdated: new Date().toISOString() });
-    res.json(inserted);
+  try {
+    const { sundayKey } = req.params;
+    const body = req.body;
+    if (!body || typeof body !== "object") {
+      return res.status(400).json({ error: "Invalid request body" });
+    }
+    // Sanitize — strip any non-serializable fields
+    const safe = {
+      announcements: Array.isArray(body.announcements) ? body.announcements.filter(a => typeof a === "string") : [],
+      newMembers: Array.isArray(body.newMembers) ? body.newMembers.filter(a => typeof a === "string") : [],
+      releasings: Array.isArray(body.releasings) ? body.releasings.map(r => typeof r === "object" ? r : {}) : [],
+      sustainings: Array.isArray(body.sustainings) ? body.sustainings.map(s => typeof s === "object" ? s : {}) : [],
+      otherBusiness: typeof body.otherBusiness === "string" ? body.otherBusiness : "",
+      conducting: typeof body.conducting === "string" ? body.conducting : "",
+      lastUpdated: new Date().toISOString(),
+    };
+    const existing = getAll("sacramentEdits").find(e => e.sundayKey === sundayKey);
+    if (existing) {
+      const updated = update("sacramentEdits", existing.id, safe);
+      return res.json(updated);
+    } else {
+      const inserted = insert("sacramentEdits", { id: randomUUID(), sundayKey, ...safe });
+      return res.json(inserted);
+    }
+  } catch (err) {
+    console.error("[SACRAMENT PUT]", err.message, err.stack);
+    res.status(500).json({ error: err.message });
   }
 });
 

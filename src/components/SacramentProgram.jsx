@@ -497,14 +497,18 @@ export default function SacramentProgram({ api }) {
     }
   };
 
+  const [saveError, setSaveError] = useState(null);
+
   const handleSave = async () => {
     const sundayKey = toSundayKey(selectedDate);
-    if (!api || !sundayKey) { setSaveStatus("error"); return; }
-    setSaveStatus("saving");
+    if (!api || !sundayKey) { setSaveStatus("error"); setSaveError("Could not determine date key"); return; }
+    setSaveStatus("saving"); setSaveError(null);
+    // Strip internal merge fields before sending
+    const { _fromServer, _lastUpdatedBy, _lastUpdated, ...payload } = edits;
     try {
       const res = await fetch(`${api}/api/sacrament/edits/${sundayKey}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(edits),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -514,7 +518,8 @@ export default function SacramentProgram({ api }) {
     } catch (e) {
       console.error("[SAVE]", e.message);
       setSaveStatus("error");
-      setTimeout(() => setSaveStatus(null), 3000);
+      setSaveError(e.message);
+      setTimeout(() => { setSaveStatus(null); setSaveError(null); }, 5000);
     }
   };
 
@@ -658,7 +663,7 @@ export default function SacramentProgram({ api }) {
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {saveStatus && (
                 <span style={{ fontSize: 11, color: saveStatus === "saved" ? "var(--success)" : saveStatus === "error" ? "var(--danger)" : "var(--text-muted)" }}>
-                  {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "✓ Saved" : "✕ Save failed"}
+                  {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "✓ Saved" : `✕ ${saveError || "Save failed"}`}
                 </span>
               )}
               <button className="btn btn-outline" onClick={handleSave} disabled={saveStatus === "saving"}>
