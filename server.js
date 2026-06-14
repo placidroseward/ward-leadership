@@ -809,16 +809,36 @@ app.post("/api/bishopric/agendas/:id/send", async (req, res) => {
   if (!agenda) return res.status(404).json({ error: "Not found" });
 
   const a = agenda.assignments || {};
-  const itemLines = (agenda.items || []).map(i => `${i.order}. ${i.title} (${i.duration} min) — ${i.owner}`);
-  const msg = [
-    `📋 Bishopric Meeting ${agenda.week}`,
-    ``,
-    a.openingPrayer    ? `Opening Prayer: ${a.openingPrayer}`    : null,
-    a.spiritualThought ? `Spiritual Thought: ${a.spiritualThought}` : null,
-    a.closingPrayer    ? `Closing Prayer: ${a.closingPrayer}`    : null,
-    ``,
-    ...itemLines,
-  ].filter(s => s !== null).join("\n");
+  const agendaData = agenda.agendaData || {};
+
+  // Build section header lines — assignments get names, other sections just the title
+  const sections = [];
+
+  // Opening Prayer and Spiritual Thought with names
+  if (a.openingPrayer || agendaData.openingPrayer)
+    sections.push(`Opening Prayer — ${a.openingPrayer || agendaData.openingPrayer}`);
+  if (a.spiritualThought || agendaData.spiritualThought)
+    sections.push(`Spiritual Thought — ${a.spiritualThought || agendaData.spiritualThought}`);
+
+  // Middle sections — title only, pulled from items or fixed labels
+  const items = agenda.items || [];
+  const skipTypes = new Set(["opening", "closing"]);
+  const middleItems = items.filter(i => !skipTypes.has(i.type));
+  if (middleItems.length > 0) {
+    middleItems.forEach(i => sections.push(i.title));
+  } else {
+    // Fallback fixed sections if no items array
+    sections.push("Review Sacrament Meeting Program");
+    sections.push("Review Previous Minutes & Unresolved Items");
+    sections.push("Discuss Ward Calendar");
+    sections.push("Round Table Discussion");
+  }
+
+  // Closing Prayer with name
+  if (a.closingPrayer || agendaData.closingPrayer)
+    sections.push(`Closing Prayer — ${a.closingPrayer || agendaData.closingPrayer}`);
+
+  const msg = [`📋 Bishopric Meeting ${agenda.week}`, ``, ...sections].join("\n");
 
   try {
     await sendToBishopric(msg);
