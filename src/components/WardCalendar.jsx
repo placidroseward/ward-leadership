@@ -242,24 +242,26 @@ export default function WardCalendar({ api }) {
   const handleEventDrop = async (eventId, newDay) => {
     const ev = events.find(e => e.id === eventId);
     if (!ev) return;
-    const oldStart = eventStartDate(ev);
-    if (!oldStart) return;
 
-    // Compute duration so end moves with start
-    const oldEnd = eventStartDate({ start: ev.end });
-    const durationMs = oldEnd ? (oldEnd - oldStart) : 3600000;
+    // Parse start using toLocalInput so we get the correct local time string
+    const startStr = toLocalInput(ev.start);
+    const endStr = toLocalInput(ev.end);
+    if (!startStr) return;
 
-    const newStart = new Date(newDay);
-    newStart.setHours(oldStart.getHours(), oldStart.getMinutes(), 0, 0);
-    const newEnd = new Date(newStart.getTime() + durationMs);
+    // Extract just the time portion (HH:MM) from the local string
+    const startTime = startStr.slice(11); // "HH:MM"
+    const endTime = endStr ? endStr.slice(11) : null;
 
+    // Build new start/end using the new day date + original time
     const pad = n => String(n).padStart(2, "0");
-    const toInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const dayStr = `${newDay.getFullYear()}-${pad(newDay.getMonth()+1)}-${pad(newDay.getDate())}`;
+    const newStartStr = `${dayStr}T${startTime}`;
+    const newEndStr = endTime ? `${dayStr}T${endTime}` : newStartStr;
 
     const form = {
       title: ev.title || ev.summary || "",
-      start: toInput(newStart),
-      end: toInput(newEnd),
+      start: newStartStr,
+      end: newEndStr,
       location: ev.location || "",
       description: ev.description || "",
       color: ev.color || EVENT_COLORS[0],
