@@ -49,7 +49,6 @@ export default function App() {
   const [wcOneNoteUrl, setWcOneNoteUrl] = useState(() => localStorage.getItem("wardcouncil_onenote_url") || "");
   const [editingWcOneNote, setEditingWcOneNote] = useState(false);
   const [wcOneNoteDraft, setWcOneNoteDraft] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("wc_user");
