@@ -529,7 +529,7 @@ app.post("/api/agendas/generate", async (req, res) => {
         const r = await fetch(latest.url);
         minutesText = await r.text();
         // Strip HTML tags if it came back as HTML
-        minutesText = minutesText.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
+        minutesText = htmlToPlainText(minutesText).slice(0, 3000);
       } catch (err) {
         console.error("[MINUTES] Failed to fetch URL:", err.message);
         minutesText = `[Minutes URL provided but could not be fetched: ${latest.url}]`;
@@ -734,7 +734,7 @@ app.post("/api/bishopric/agendas/generate", async (req, res) => {
     else if (latestNote.url) {
       try {
         const r = await fetch(latestNote.url);
-        notesText = (await r.text()).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 3000);
+        notesText = htmlToPlainText(await r.text()).slice(0, 3000);
       } catch { notesText = `[Notes URL provided but could not be fetched]`; }
     }
   }
@@ -868,14 +868,7 @@ app.post("/api/wardcouncil/onenote/webhook", (req, res) => {
   }
 
   // Strip HTML tags OneNote sends, collapse whitespace
-  const plainText = (content || "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/\s+/g, " ")
-    .trim();
+  const plainText = htmlToPlainText(content);
 
   const page = insert("wardCouncilOneNotePages", {
     id: randomUUID(),
@@ -896,6 +889,36 @@ app.get("/api/wardcouncil/onenote/latest", (req, res) => {
   if (pages.length === 0) return res.json(null);
   res.json(pages[0]);
 });
+
+// ─── HTML → PLAIN TEXT HELPER ─────────────────────────────────────────────────
+// Converts OneNote HTML to readable plain text, preserving paragraph/list
+// structure as newlines and decoding common HTML entities.
+function htmlToPlainText(html) {
+  return (html || "")
+    // Block-level tags → newline before stripping
+    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n• ")
+    // Strip remaining tags
+    .replace(/<[^>]+>/g, "")
+    // Decode HTML entities
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(dec))
+    .replace(/&[a-z]+;/gi, " ")
+    // Collapse runs of spaces (but preserve newlines)
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    // Collapse 3+ newlines to 2
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 // ─── BISHOPRIC ONENOTE WEBHOOK (receives pages from Make) ────────────────────
 const ONENOTE_WEBHOOK_SECRET = process.env.ONENOTE_WEBHOOK_SECRET || "placid-rose-onenote-2026";
@@ -934,15 +957,7 @@ app.post("/api/bishopric/onenote/webhook", (req, res) => {
     return res.status(400).json({ error: "title or content required" });
   }
 
-  // Strip HTML tags OneNote sends, collapse whitespace
-  const plainText = (content || "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/\s+/g, " ")
-    .trim();
+  const plainText = htmlToPlainText(content);
 
   const page = insert("bishopricOneNotePages", {
     id: randomUUID(),
