@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const SHEETS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQdl23Rb1bXooszhKH3On8dHLgfG4Oqpz5V0my6ip4NupYOZr_SuEo8kGXBY-waCDPhMiZE__jw-ZfU/pub?gid=201628214&single=true&output=csv";
@@ -555,6 +555,19 @@ export default function SacramentProgram({ api }) {
     win.onload = () => { win.focus(); win.print(); };
   };
 
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const touchStartX = useRef(null);
+
+  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd = (e) => {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(dx) < 40) return;
+    if (dx < 0) setDrawerOpen(false);  // swipe left → hide drawer, show program
+    if (dx > 0) setDrawerOpen(true);   // swipe right → show drawer
+    touchStartX.current = null;
+  };
+
   const ordinals = ["First", "Second", "Third", "Fourth"];
 
   const grouped = rows.reduce((acc, r) => {
@@ -567,13 +580,27 @@ export default function SacramentProgram({ api }) {
   }, {});
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}>
 
       {/* Left: date selector */}
-      <div className="scroll" style={{ width: 200, borderRight: "1px solid var(--border)", padding: 12, flexShrink: 0, background: "var(--surface)" }}>
+      <div className="scroll" style={{
+        width: drawerOpen ? 200 : 0,
+        minWidth: drawerOpen ? 200 : 0,
+        borderRight: drawerOpen ? "1px solid var(--border)" : "none",
+        padding: drawerOpen ? 12 : 0,
+        flexShrink: 0,
+        background: "var(--surface)",
+        overflow: drawerOpen ? "auto" : "hidden",
+        transition: "width 0.2s ease, min-width 0.2s ease, padding 0.2s ease",
+      }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div className="label" style={{ margin: 0 }}>Sundays</div>
-          <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px" }} onClick={fetchData} title="Refresh">↺</button>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px" }} onClick={fetchData} title="Refresh">↺</button>
+            <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px" }} onClick={() => setDrawerOpen(false)} title="Collapse">‹</button>
+          </div>
         </div>
         <a href={SHEETS_EDIT_URL} target="_blank" rel="noreferrer"
           style={{ display: "block", fontSize: 9, color: "var(--gold)", textDecoration: "none", marginBottom: 10 }}>
@@ -614,11 +641,16 @@ export default function SacramentProgram({ api }) {
 
           {/* Toolbar */}
           <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface)", flexShrink: 0 }}>
-            <div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--text)" }}>{formatDate(selected["__date"])}</div>
-              {fast && <div style={{ fontSize: 11, color: "var(--gold)", marginTop: 2 }}>Fast &amp; Testimony Meeting</div>}
-              {stake && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Stake Conference</div>}
-              {serverEdits && <div style={{ fontSize: 10, color: "var(--gold-dim)", marginTop: 2 }}>◈ GroupMe edits applied{serverEdits.lastUpdatedBy ? ` · ${serverEdits.lastUpdatedBy}` : ""}</div>}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {!drawerOpen && (
+                <button className="btn btn-ghost" style={{ fontSize: 14, padding: "2px 8px" }} onClick={() => setDrawerOpen(true)} title="Show date list">›</button>
+              )}
+              <div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--text)" }}>{formatDate(selected["__date"])}</div>
+                {fast && <div style={{ fontSize: 11, color: "var(--gold)", marginTop: 2 }}>Fast &amp; Testimony Meeting</div>}
+                {stake && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Stake Conference</div>}
+                {serverEdits && <div style={{ fontSize: 10, color: "var(--gold-dim)", marginTop: 2 }}>◈ GroupMe edits applied{serverEdits.lastUpdatedBy ? ` · ${serverEdits.lastUpdatedBy}` : ""}</div>}
+              </div>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               {saveStatus && (
