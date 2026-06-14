@@ -1,10 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 
 const SHEETS_CSV_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vQdl23Rb1bXooszhKH3On8dHLgfG4Oqpz5V0my6ip4NupYOZr_SuEo8kGXBY-waCDPhMiZE__jw-ZfU/pub?gid=201628214&single=true&output=csv";
 
 const SHEETS_EDIT_URL =
   "https://docs.google.com/spreadsheets/d/1MhtUPBuSjRuQ6Y3qcEYqVsnGq5rSfR-coFsy5dGHzqs/edit";
+
+const TODAY = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+const WARD = "Placid Rose Ward";
+const STAKE = "Herriman Utah South Stake";
 
 // ─── CSV Parser ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
@@ -80,31 +84,21 @@ function parseNameTopic(val) {
   return { name: val.trim(), topic: null };
 }
 
-// Convert "4-Jan" date string to YYYY-MM-DD for server key
 function toSundayKey(dateStr) {
   const d = parseMeetingDate(dateStr);
   if (!d) return null;
   return d.toISOString().slice(0, 10);
 }
 
-// Merge localStorage edits with server edits — server values take precedence
-// for fields that are non-empty on the server side.
-function mergeEdits(local, server) {
-  if (!server) return local;
-  return {
-    announcements: server.announcements?.length ? server.announcements : (local.announcements || []),
-    newMembers:    server.newMembers?.length    ? server.newMembers    : (local.newMembers || []),
-    releasings:    server.releasings?.length    ? server.releasings    : (local.releasings || []),
-    sustainings:   server.sustainings?.length   ? server.sustainings   : (local.sustainings || []),
-    otherBusiness: server.otherBusiness         ? server.otherBusiness : (local.otherBusiness || ""),
-    conducting:    server.conducting            ? server.conducting    : (local.conducting || ""),
-    _fromServer: true,
-    _lastUpdatedBy: server.lastUpdatedBy || null,
-    _lastUpdated: server.lastUpdated || null,
-  };
+// ─── Default blank releasing / sustaining records ────────────────────────────
+function blankReleasing() {
+  return { id: Date.now(), title: "Brother", name: "", calling: "", dateReleased: TODAY, dateVote: TODAY, dateChanged: "" };
+}
+function blankSustaining() {
+  return { id: Date.now(), title: "Brother", name: "", calling: "", dateCalled: TODAY, dateSustained: TODAY, dateSetApart: "", dateChanged: "" };
 }
 
-// ─── Local storage for editable fields ───────────────────────────────────────
+// ─── Local storage ────────────────────────────────────────────────────────────
 function loadEdits(dateKey) {
   try {
     const raw = localStorage.getItem(`sp_edits_${dateKey}`);
@@ -116,75 +110,19 @@ function saveEdits(dateKey, edits) {
   try { localStorage.setItem(`sp_edits_${dateKey}`, JSON.stringify(edits)); } catch (e) {}
 }
 
-// ─── Section divider ─────────────────────────────────────────────────────────
-function Divider() {
-  return <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0" }} />;
-}
-
-// ─── Section heading ─────────────────────────────────────────────────────────
-function SectionHeading({ children }) {
-  return (
-    <div style={{
-      fontSize: 9, fontWeight: 600, letterSpacing: "0.2em",
-      textTransform: "uppercase", color: "var(--gold-dim)",
-      borderBottom: "1px solid var(--border)", paddingBottom: 4, marginBottom: 10,
-    }}>{children}</div>
-  );
-}
-
-// ─── Read-only program line ───────────────────────────────────────────────────
-function ProgramLine({ label, value, hymn, indent }) {
-  if (!value) return null;
-  return (
-    <div style={{
-      display: "flex", justifyContent: "space-between", alignItems: "baseline",
-      marginBottom: 5, gap: 8, paddingLeft: indent ? 12 : 0,
-    }}>
-      {label && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{label}</span>}
-      <span style={{ fontSize: 12, color: "var(--text)", textAlign: label ? "right" : "left", fontStyle: hymn ? "italic" : "normal", flex: 1 }}>{value}</span>
-    </div>
-  );
-}
-
-// ─── Editable text field inline ───────────────────────────────────────────────
-function EditableLine({ label, placeholder, value, onChange, onRemove, indent }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5, paddingLeft: indent ? 12 : 0 }}>
-      {label && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, minWidth: 90 }}>{label}</span>}
-      <input
-        className="input"
-        style={{ fontSize: 11, padding: "3px 8px", flex: 1 }}
-        placeholder={placeholder || ""}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-      />
-      {onRemove && (
-        <button onClick={onRemove} style={{
-          background: "none", border: "none", cursor: "pointer",
-          color: "var(--danger)", fontSize: 12, padding: "0 2px", flexShrink: 0,
-        }}>✕</button>
-      )}
-    </div>
-  );
-}
-
-// ─── Add item button ─────────────────────────────────────────────────────────
-function AddButton({ label, onClick }) {
-  return (
-    <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 8px", marginTop: 2, color: "var(--text-muted)" }}
-      onClick={onClick}>
-      + {label}
-    </button>
-  );
-}
-
-// ─── Italic notice line ───────────────────────────────────────────────────────
-function Notice({ children }) {
-  return (
-    <div style={{ fontSize: 11, fontStyle: "italic", color: "var(--text-muted)", marginBottom: 5, paddingLeft: 4 }}>
-      {children}
-    </div>
-  );
+// ─── Merge server + localStorage ─────────────────────────────────────────────
+function mergeEdits(local, server) {
+  if (!server) return local;
+  return {
+    announcements: server.announcements?.length ? server.announcements : (local.announcements || []),
+    newMembers:    server.newMembers?.length    ? server.newMembers    : (local.newMembers || []),
+    releasings:    server.releasings?.length    ? server.releasings    : (local.releasings || []),
+    sustainings:   server.sustainings?.length   ? server.sustainings   : (local.sustainings || []),
+    otherBusiness: server.otherBusiness         ? server.otherBusiness : (local.otherBusiness || ""),
+    _fromServer: true,
+    _lastUpdatedBy: server.lastUpdatedBy || null,
+    _lastUpdated: server.lastUpdated || null,
+  };
 }
 
 // ─── Print CSS ────────────────────────────────────────────────────────────────
@@ -204,18 +142,41 @@ const PRINT_CSS = `
   .line-value { text-align: right; flex: 1; font-size: 14pt; }
   .line-value.hymn { font-style: italic; }
   .line-only { font-size: 14pt; margin-bottom: 4pt; }
-  .line-indent { padding-left: 14pt; }
   .notice { font-style: italic; color: #6B6760; font-size: 13pt; margin-bottom: 4pt; padding-left: 4pt; }
   .new-member-intro { font-size: 13pt; font-style: italic; color: #4a4540; margin-bottom: 6pt; line-height: 1.5; }
   .new-member-outro { font-size: 13pt; font-style: italic; color: #4a4540; margin-top: 6pt; line-height: 1.5; }
-  .speaker-block { margin-bottom: 8pt; }
+  .speaker-block { margin-bottom: 10pt; }
+  .speaker-order { font-size: 10pt; letter-spacing: 0.15em; text-transform: uppercase; color: #8B6914; margin-bottom: 2pt; }
   .speaker-name { font-size: 14pt; font-weight: 500; }
   .speaker-topic { font-size: 12pt; font-style: italic; color: #4a4540; margin-top: 2pt; }
   .fast-notice { text-align: center; font-family: 'Cormorant Garamond', serif; font-size: 18pt; font-style: italic; color: #8B6914; padding: 0.2in 0; }
+  .paperwork-ref { font-size: 12pt; font-style: italic; color: #6B6760; margin-bottom: 4pt; }
   .prog-footer { margin-top: 0.25in; border-top: 1pt solid #D4CFC6; padding-top: 0.12in; text-align: center; font-size: 11pt; color: #9A9590; letter-spacing: 0.08em; }
   @media print { @page { margin: 0.5in; } body { padding: 0; } }
 `;
 
+// ─── Ecclesiastical form CSS ──────────────────────────────────────────────────
+const FORM_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'EB Garamond', Georgia, serif; font-size: 13pt; color: #1a1814; background: white; padding: 0.6in; }
+  .form-page { page-break-after: always; margin-bottom: 0.5in; }
+  .form-page:last-child { page-break-after: auto; }
+  .form-header { text-align: center; margin-bottom: 0.3in; border-bottom: 1pt solid #8B6914; padding-bottom: 0.15in; }
+  .form-title { font-family: 'Cormorant Garamond', serif; font-size: 18pt; font-weight: 600; color: #1a1814; margin-bottom: 4pt; }
+  .form-ward { font-size: 12pt; color: #6B6760; }
+  .form-body { line-height: 2; }
+  .form-body p { margin-bottom: 8pt; }
+  .blank { display: inline-block; border-bottom: 1pt solid #1a1814; min-width: 2in; vertical-align: bottom; }
+  .blank-sm { display: inline-block; border-bottom: 1pt solid #1a1814; min-width: 0.8in; vertical-align: bottom; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.2in; margin-top: 0.25in; }
+  .grid-item { border-bottom: 1pt solid #1a1814; padding-bottom: 2pt; }
+  .grid-label { font-size: 10pt; color: #6B6760; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 2pt; }
+  .grid-value { font-size: 13pt; min-height: 18pt; }
+  @media print { @page { margin: 0.6in; } body { padding: 0; } }
+`;
+
+// ─── Build program HTML ───────────────────────────────────────────────────────
 function buildPrintHTML(row, edits) {
   const date = formatDate(row["__date"]);
   const fast = isFastSunday(row);
@@ -229,63 +190,55 @@ function buildPrintHTML(row, edits) {
   const closingHymn = hymnDisplay(row["Closing Hymn "]) || hymnDisplay(row["Closing Hymn"]);
   const benediction = row["Benediction"] || "";
   const specialHymn = hymnDisplay(row["Special #/Rest Hymn"]);
-  const speakers = [
-    parseNameTopic(row["Speaker1"]),
-    parseNameTopic(row["Speaker2"]),
-    parseNameTopic(row["Special #/Rest Hymn"] && !fast ? null : null), // placeholder
-    parseNameTopic(row["Speaker 3"]),
-    parseNameTopic(row["Speaker 4"]),
-  ].filter(Boolean);
-  // Rebuild speakers in order with special hymn interleaved
   const sp1 = parseNameTopic(row["Speaker1"]);
   const sp2 = parseNameTopic(row["Speaker2"]);
   const sp3 = parseNameTopic(row["Speaker 3"]);
   const sp4 = parseNameTopic(row["Speaker 4"]);
 
-  const announcements = (edits.announcements || []).filter(a => a.trim());
-  const newMembers = (edits.newMembers || []).filter(a => a.trim());
-  const releasings = (edits.releasings || []).filter(a => a.trim());
-  const sustainings = (edits.sustainings || []).filter(a => a.trim());
+  const announcements = (edits.announcements || []).filter(a => a?.trim());
+  const newMembers = (edits.newMembers || []).filter(a => a?.trim());
+  const releasings = (edits.releasings || []).filter(r => r?.name?.trim());
+  const sustainings = (edits.sustainings || []).filter(s => s?.name?.trim());
   const otherBusiness = (edits.otherBusiness || "").trim();
   const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || otherBusiness;
 
-  const line = (label, value, hymn, indent) =>
-    value ? `<div class="line${indent ? " line-indent" : ""}"><span class="line-label">${label}</span><span class="line-value${hymn ? " hymn" : ""}">${value}</span></div>` : "";
-  const lineOnly = (value, indent) =>
-    value ? `<div class="line-only${indent ? " line-indent" : ""}">${value}</div>` : "";
+  const line = (label, value, hymn) =>
+    value ? `<div class="line"><span class="line-label">${label}</span><span class="line-value${hymn ? " hymn" : ""}">${value}</span></div>` : "";
+  const lineOnly = (value) =>
+    value ? `<div class="line-only">${value}</div>` : "";
   const notice = (value) =>
     value ? `<div class="notice">${value}</div>` : "";
   const hr = () => `<hr/>`;
   const sectionTitle = (t) => `<div class="section-title">${t}</div>`;
 
+  const ordinals = ["First", "Second", "Third", "Fourth"];
+  const speakerBlock = (sp, idx) => sp
+    ? `<div class="speaker-block"><div class="speaker-order">${ordinals[idx]} Speaker</div><div class="speaker-name">${sp.name}</div>${sp.topic ? `<div class="speaker-topic">${sp.topic}</div>` : ""}</div>`
+    : "";
+
   let body = "";
 
-  // Presiding & Conducting
   body += sectionTitle("Presiding &amp; Conducting");
   body += line("Presiding", presiding);
   body += line("Conducting", conducting);
   body += hr();
 
-  // Music
   body += sectionTitle("Music");
   body += line("Organist", organ);
   body += line("Choir Director", conductingMusic);
   body += hr();
 
-  // Announcements
   if (announcements.length) {
     body += sectionTitle("Announcements");
     announcements.forEach(a => { body += lineOnly(a); });
     body += hr();
   }
 
-  // Opening Hymn & Prayer
   body += sectionTitle("Opening");
   body += line("Opening Hymn", openingHymn, true);
   body += line("Opening Prayer", openingPrayer);
   body += hr();
 
-  // Ward Business
   if (hasWardBusiness) {
     body += sectionTitle("Ward Business");
     if (newMembers.length) {
@@ -293,61 +246,200 @@ function buildPrintHTML(row, edits) {
       newMembers.forEach(m => { body += line("New Member", m); });
       body += `<div class="new-member-outro">All those who can join with me in welcoming these new members into our ward, please do so by the uplifted hand.</div>`;
     }
-    releasings.forEach(r => { body += line("Released", r); });
-    sustainings.forEach(s => { body += line("Sustained", s); });
+    if (releasings.length) {
+      body += `<div class="paperwork-ref">Releasings — see accompanying paperwork</div>`;
+    }
+    if (sustainings.length) {
+      body += `<div class="paperwork-ref">Sustainings — see accompanying paperwork</div>`;
+    }
     if (otherBusiness) body += lineOnly(otherBusiness);
     body += hr();
   }
 
-  // Sacrament
   body += sectionTitle("Sacrament");
   body += line("Sacrament Hymn", sacramentHymn, true);
   body += notice("Sacrament to be administered to the congregation by the Aaronic Priesthood");
   body += notice("Please reverence the sacrament and put away all distractions");
   body += hr();
 
-  // Program
   if (fast) {
     body += `<div class="fast-notice">Fast &amp; Testimony Meeting<br/>Sharing of Testimonies</div>`;
   } else {
     body += sectionTitle("Program");
-    if (sp1) {
-      body += `<div class="speaker-block"><div class="speaker-name">${sp1.name}</div>${sp1.topic ? `<div class="speaker-topic">${sp1.topic}</div>` : ""}</div>`;
-    }
-    if (sp2) {
-      body += `<div class="speaker-block"><div class="speaker-name">${sp2.name}</div>${sp2.topic ? `<div class="speaker-topic">${sp2.topic}</div>` : ""}</div>`;
-    }
+    // Track speaker ordinal separately (special number doesn't count)
+    let speakerIdx = 0;
+    if (sp1) { body += speakerBlock(sp1, speakerIdx++); }
+    if (sp2) { body += speakerBlock(sp2, speakerIdx++); }
     if (specialHymn) {
       body += `<div class="speaker-block"><div class="speaker-name" style="font-style:italic">${specialHymn}</div><div class="speaker-topic">Musical Number / Intermediate Hymn</div></div>`;
     }
-    if (sp3) {
-      body += `<div class="speaker-block"><div class="speaker-name">${sp3.name}</div>${sp3.topic ? `<div class="speaker-topic">${sp3.topic}</div>` : ""}</div>`;
-    }
-    if (sp4) {
-      body += `<div class="speaker-block"><div class="speaker-name">${sp4.name}</div>${sp4.topic ? `<div class="speaker-topic">${sp4.topic}</div>` : ""}</div>`;
-    }
+    if (sp3) { body += speakerBlock(sp3, speakerIdx++); }
+    if (sp4) { body += speakerBlock(sp4, speakerIdx++); }
   }
   body += hr();
 
-  // Closing
   body += sectionTitle("Closing");
   body += line("Closing Hymn", closingHymn, true);
   body += line("Closing Prayer", benediction);
 
-  return `<!DOCTYPE html>
-<html><head><meta charset="utf-8">
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Sacrament Meeting Program — ${date}</title>
-<style>${PRINT_CSS}</style>
-</head><body>
+<style>${PRINT_CSS}</style></head><body>
 <div class="prog-header">
-  <div class="prog-ward">Placid Rose Ward</div>
+  <div class="prog-ward">${WARD}</div>
   <div class="prog-subtitle">Sacrament Meeting</div>
   <div class="prog-date">${date}</div>
   <div class="prog-time">9:00 AM</div>
 </div>
 ${body}
-<div class="prog-footer">The Church of Jesus Christ of Latter-day Saints &nbsp;·&nbsp; Placid Rose Ward &nbsp;·&nbsp; Herriman Utah South Stake</div>
+<div class="prog-footer">The Church of Jesus Christ of Latter-day Saints &nbsp;·&nbsp; ${WARD} &nbsp;·&nbsp; ${STAKE}</div>
 </body></html>`;
+}
+
+// ─── Build ecclesiastical forms HTML ─────────────────────────────────────────
+function buildFormsHTML(releasings, sustainings) {
+  let pages = "";
+
+  releasings.filter(r => r.name?.trim()).forEach(r => {
+    const him = r.title === "Sister" ? "her" : "his";
+    const he = r.title === "Sister" ? "she" : "he";
+    pages += `
+    <div class="form-page">
+      <div class="form-header">
+        <div class="form-title">Ward Member Release</div>
+        <div class="form-ward">${WARD}, ${STAKE}</div>
+      </div>
+      <div class="form-body">
+        <p>The following individual has been extended a release:</p>
+        <p>${r.title} <span class="blank">${r.name}</span> has been released as <span class="blank">${r.calling}</span></p>
+        <p>and we propose that ${he} be given a vote of thanks for ${him} service. Those who wish to express their appreciation may manifest it by the uplifted hand.</p>
+      </div>
+      <div class="grid">
+        <div class="grid-item"><div class="grid-label">Date Released</div><div class="grid-value">${r.dateReleased || ""}</div></div>
+        <div class="grid-item"><div class="grid-label">By</div><div class="grid-value"></div></div>
+        <div class="grid-item"><div class="grid-label">Date of Vote of Thanks</div><div class="grid-value">${r.dateVote || ""}</div></div>
+        <div class="grid-item"><div class="grid-label">Leader Notified</div><div class="grid-value"></div></div>
+        <div class="grid-item"><div class="grid-label">Date Changed in Records</div><div class="grid-value">${r.dateChanged || ""}</div></div>
+        <div class="grid-item"></div>
+      </div>
+    </div>`;
+  });
+
+  sustainings.filter(s => s.name?.trim()).forEach(s => {
+    const him = s.title === "Sister" ? "her" : "his";
+    const he = s.title === "Sister" ? "she" : "he";
+    pages += `
+    <div class="form-page">
+      <div class="form-header">
+        <div class="form-title">Ward Member Calling, Sustaining and Setting Apart</div>
+        <div class="form-ward">${WARD}, ${STAKE}</div>
+      </div>
+      <div class="form-body">
+        <p>The following individual has been called to serve in the ward and we ask them to stand and remain standing for a sustaining vote:</p>
+        <p>${s.title} <span class="blank">${s.name}</span> has been called as <span class="blank">${s.calling}</span></p>
+        <p>and we propose that ${he} be sustained. Those in favor may manifest it by the uplifted hand.</p>
+        <p>Those opposed, if any, may manifest it by the same sign.</p>
+      </div>
+      <div class="grid">
+        <div class="grid-item"><div class="grid-label">Date Called</div><div class="grid-value">${s.dateCalled || ""}</div></div>
+        <div class="grid-item"><div class="grid-label">By</div><div class="grid-value"></div></div>
+        <div class="grid-item"><div class="grid-label">Date Sustained</div><div class="grid-value">${s.dateSustained || ""}</div></div>
+        <div class="grid-item"><div class="grid-label">Leader Notified</div><div class="grid-value"></div></div>
+        <div class="grid-item"><div class="grid-label">Date Set Apart</div><div class="grid-value">${s.dateSetApart || ""}</div></div>
+        <div class="grid-item"><div class="grid-label">Date Changed in Records</div><div class="grid-value">${s.dateChanged || ""}</div></div>
+      </div>
+    </div>`;
+  });
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Ecclesiastical Forms</title>
+<style>${FORM_CSS}</style></head><body>${pages}</body></html>`;
+}
+
+// ─── UI helpers ───────────────────────────────────────────────────────────────
+function Divider() {
+  return <div style={{ borderTop: "1px solid var(--border)", margin: "14px 0" }} />;
+}
+
+function SectionHeading({ children }) {
+  return (
+    <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--gold-dim)", borderBottom: "1px solid var(--border)", paddingBottom: 4, marginBottom: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+function ProgramLine({ label, value, hymn }) {
+  if (!value) return null;
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 5, gap: 8 }}>
+      {label && <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>{label}</span>}
+      <span style={{ fontSize: 12, color: "var(--text)", textAlign: label ? "right" : "left", fontStyle: hymn ? "italic" : "normal", flex: 1 }}>{value}</span>
+    </div>
+  );
+}
+
+function Notice({ children }) {
+  return <div style={{ fontSize: 11, fontStyle: "italic", color: "var(--text-muted)", marginBottom: 5, paddingLeft: 4 }}>{children}</div>;
+}
+
+function AddButton({ label, onClick }) {
+  return (
+    <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 8px", marginTop: 2, color: "var(--text-muted)" }} onClick={onClick}>
+      + {label}
+    </button>
+  );
+}
+
+// ─── Releasing / Sustaining record form (inline editor) ───────────────────────
+function RecordForm({ type, record, onChange, onRemove }) {
+  const isReleasing = type === "releasing";
+  const him = record.title === "Sister" ? "her" : "his";
+  const he = record.title === "Sister" ? "she" : "he";
+  const f = (key, val) => onChange({ ...record, [key]: val });
+
+  return (
+    <div style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderLeft: `3px solid ${isReleasing ? "var(--rs)" : "var(--eq)"}`, borderRadius: "var(--radius)", padding: 12, marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 10, color: isReleasing ? "var(--rs)" : "var(--eq)", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>
+          {isReleasing ? "Releasing" : "Sustaining"}
+        </span>
+        <button onClick={onRemove} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>✕</button>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: 6, marginBottom: 6 }}>
+        <select className="input" style={{ fontSize: 11, padding: "3px 6px" }} value={record.title} onChange={e => f("title", e.target.value)}>
+          <option value="Brother">Brother</option>
+          <option value="Sister">Sister</option>
+        </select>
+        <input className="input" style={{ fontSize: 11, padding: "3px 8px" }} placeholder="Full name..." value={record.name} onChange={e => f("name", e.target.value)} />
+      </div>
+      <input className="input" style={{ fontSize: 11, padding: "3px 8px", marginBottom: 6 }} placeholder={isReleasing ? "Released as..." : "Called as..."} value={record.calling} onChange={e => f("calling", e.target.value)} />
+
+      <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginBottom: 8, lineHeight: 1.5 }}>
+        {isReleasing
+          ? `...and we propose that ${he} be given a vote of thanks for ${him} service.`
+          : `...and we propose that ${he} be sustained. Those in favor may manifest it by the uplifted hand. Those opposed, if any, may manifest it by the same sign.`}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        {isReleasing ? (
+          <>
+            <div><label className="label" style={{ fontSize: 9 }}>Date Released</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateReleased || TODAY} onChange={e => f("dateReleased", e.target.value)} /></div>
+            <div><label className="label" style={{ fontSize: 9 }}>Date of Vote of Thanks</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateVote || TODAY} onChange={e => f("dateVote", e.target.value)} /></div>
+            <div><label className="label" style={{ fontSize: 9 }}>Date Changed in Records</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateChanged || ""} onChange={e => f("dateChanged", e.target.value)} /></div>
+          </>
+        ) : (
+          <>
+            <div><label className="label" style={{ fontSize: 9 }}>Date Called</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateCalled || TODAY} onChange={e => f("dateCalled", e.target.value)} /></div>
+            <div><label className="label" style={{ fontSize: 9 }}>Date Sustained</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateSustained || TODAY} onChange={e => f("dateSustained", e.target.value)} /></div>
+            <div><label className="label" style={{ fontSize: 9 }}>Date Set Apart</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateSetApart || ""} onChange={e => f("dateSetApart", e.target.value)} /></div>
+            <div><label className="label" style={{ fontSize: 9 }}>Date Changed in Records</label><input className="input" style={{ fontSize: 11, padding: "2px 6px" }} value={record.dateChanged || ""} onChange={e => f("dateChanged", e.target.value)} /></div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -376,7 +468,6 @@ export default function SacramentProgram({ api }) {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Load localStorage + server edits when date changes
   useEffect(() => {
     if (!selectedDate) return;
     const local = loadEdits(selectedDate);
@@ -385,57 +476,64 @@ export default function SacramentProgram({ api }) {
     if (api && sundayKey) {
       fetch(`${api}/api/sacrament/edits/${sundayKey}`)
         .then(r => r.json())
-        .then(data => {
-          setServerEdits(data);
-          if (data) setEdits(mergeEdits(local, data));
-        })
+        .then(data => { setServerEdits(data); if (data) setEdits(mergeEdits(local, data)); })
         .catch(() => {});
     }
   }, [selectedDate, api]);
 
-  const setEdit = (key, value) => {
-    const next = { ...edits, [key]: value };
+  const persistEdits = (next) => {
     setEdits(next);
     saveEdits(selectedDate, next);
-    // Also persist to server
     const sundayKey = toSundayKey(selectedDate);
     if (api && sundayKey) {
       fetch(`${api}/api/sacrament/edits/${sundayKey}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(next),
       }).catch(() => {});
     }
   };
 
-  const addListItem = (key) => {
-    const next = [...(edits[key] || []), ""];
-    setEdit(key, next);
-  };
-
-  const updateListItem = (key, idx, value) => {
-    const next = [...(edits[key] || [])];
-    next[idx] = value;
-    setEdit(key, next);
-  };
-
-  const removeListItem = (key, idx) => {
-    const next = (edits[key] || []).filter((_, i) => i !== idx);
-    setEdit(key, next);
-  };
+  const setEdit = (key, value) => persistEdits({ ...edits, [key]: value });
+  const addListItem = (key, blank) => setEdit(key, [...(edits[key] || []), blank || ""]);
+  const updateListItem = (key, idx, value) => { const next = [...(edits[key] || [])]; next[idx] = value; setEdit(key, next); };
+  const removeListItem = (key, idx) => setEdit(key, (edits[key] || []).filter((_, i) => i !== idx));
 
   const selected = rows.find(r => r["__date"] === selectedDate);
   const fast = selected && isFastSunday(selected);
   const stake = selected && isStakeConference(selected);
 
-  const handlePrint = () => {
+  const sp1 = selected ? parseNameTopic(selected["Speaker1"]) : null;
+  const sp2 = selected ? parseNameTopic(selected["Speaker2"]) : null;
+  const sp3 = selected ? parseNameTopic(selected["Speaker 3"]) : null;
+  const sp4 = selected ? parseNameTopic(selected["Speaker 4"]) : null;
+  const specialHymn = selected ? hymnDisplay(selected["Special #/Rest Hymn"]) : null;
+  const closingHymn = selected ? (hymnDisplay(selected["Closing Hymn "]) || hymnDisplay(selected["Closing Hymn"])) : null;
+
+  const announcements = edits.announcements || [];
+  const newMembers = edits.newMembers || [];
+  const releasings = edits.releasings || [];
+  const sustainings = edits.sustainings || [];
+  const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || (edits.otherBusiness || "").trim();
+
+  const handlePrintProgram = () => {
     if (!selected) return;
     const html = buildPrintHTML(selected, edits);
     const win = window.open("", "_blank", "width=900,height=700");
-    win.document.write(html);
-    win.document.close();
+    win.document.write(html); win.document.close();
     win.onload = () => { win.focus(); win.print(); };
   };
+
+  const handlePrintForms = () => {
+    const rel = releasings.filter(r => r?.name?.trim());
+    const sus = sustainings.filter(s => s?.name?.trim());
+    if (!rel.length && !sus.length) return;
+    const html = buildFormsHTML(rel, sus);
+    const win = window.open("", "_blank", "width=900,height=700");
+    win.document.write(html); win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+  };
+
+  const ordinals = ["First", "Second", "Third", "Fourth"];
 
   const grouped = rows.reduce((acc, r) => {
     const d = parseMeetingDate(r["__date"]);
@@ -446,32 +544,17 @@ export default function SacramentProgram({ api }) {
     return acc;
   }, {});
 
-  const sp1 = selected ? parseNameTopic(selected["Speaker1"]) : null;
-  const sp2 = selected ? parseNameTopic(selected["Speaker2"]) : null;
-  const sp3 = selected ? parseNameTopic(selected["Speaker 3"]) : null;
-  const sp4 = selected ? parseNameTopic(selected["Speaker 4"]) : null;
-  const specialHymn = selected ? hymnDisplay(selected["Special #/Rest Hymn"]) : null;
-  const closingHymn = selected
-    ? (hymnDisplay(selected["Closing Hymn "]) || hymnDisplay(selected["Closing Hymn"]))
-    : null;
-
-  const announcements = edits.announcements || [];
-  const newMembers = edits.newMembers || [];
-  const releasings = edits.releasings || [];
-  const sustainings = edits.sustainings || [];
-  const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || (edits.otherBusiness || "").trim();
-
   return (
     <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
 
       {/* Left: date selector */}
       <div className="scroll" style={{ width: 200, borderRight: "1px solid var(--border)", padding: 12, flexShrink: 0, background: "var(--surface)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
           <div className="label" style={{ margin: 0 }}>Sundays</div>
           <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px" }} onClick={fetchData} title="Refresh">↺</button>
         </div>
         <a href={SHEETS_EDIT_URL} target="_blank" rel="noreferrer"
-          style={{ display: "block", fontSize: 9, color: "var(--gold)", textDecoration: "none", marginBottom: 10, letterSpacing: "0.08em" }}>
+          style={{ display: "block", fontSize: 9, color: "var(--gold)", textDecoration: "none", marginBottom: 10 }}>
           ↗ Edit Spreadsheet
         </a>
         {loading && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Loading...</div>}
@@ -481,8 +564,6 @@ export default function SacramentProgram({ api }) {
             <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: 4, fontWeight: 600 }}>{month}</div>
             {monthRows.map(r => {
               const isSelected = r["__date"] === selectedDate;
-              const isFast = isFastSunday(r);
-              const isStake = isStakeConference(r);
               return (
                 <div key={r["__date"]} onClick={() => setSelectedDate(r["__date"])} style={{
                   padding: "6px 10px", borderRadius: "var(--radius)", cursor: "pointer", marginBottom: 2,
@@ -491,8 +572,8 @@ export default function SacramentProgram({ api }) {
                   color: isSelected ? "var(--gold)" : "var(--text-dim)", fontSize: 12,
                 }}>
                   {r["__date"]}
-                  {isFast && <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 4 }}>F&T</span>}
-                  {isStake && <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 4 }}>SC</span>}
+                  {isFastSunday(r) && <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 4 }}>F&T</span>}
+                  {isStakeConference(r) && <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 4 }}>SC</span>}
                 </div>
               );
             })}
@@ -504,27 +585,25 @@ export default function SacramentProgram({ api }) {
       {/* Right: program */}
       {!selected ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div className="empty-state">
-            <span className="empty-state-icon">◎</span>
-            <p className="empty-state-text">Select a Sunday to view the program</p>
-          </div>
+          <div className="empty-state"><span className="empty-state-icon">◎</span><p className="empty-state-text">Select a Sunday to view the program</p></div>
         </div>
       ) : (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
           {/* Toolbar */}
           <div style={{ padding: "12px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--surface)", flexShrink: 0 }}>
             <div>
               <div style={{ fontFamily: "var(--font-display)", fontSize: 18, color: "var(--text)" }}>{formatDate(selected["__date"])}</div>
               {fast && <div style={{ fontSize: 11, color: "var(--gold)", marginTop: 2 }}>Fast &amp; Testimony Meeting</div>}
               {stake && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>Stake Conference</div>}
-              {serverEdits && (
-                <div style={{ fontSize: 10, color: "var(--gold-dim)", marginTop: 2 }}>
-                  ◈ GroupMe edits applied{serverEdits.lastUpdatedBy ? ` · from ${serverEdits.lastUpdatedBy}` : ""}
-                  {serverEdits.lastUpdated ? ` · ${new Date(serverEdits.lastUpdated).toLocaleString()}` : ""}
-                </div>
-              )}
+              {serverEdits && <div style={{ fontSize: 10, color: "var(--gold-dim)", marginTop: 2 }}>◈ GroupMe edits applied{serverEdits.lastUpdatedBy ? ` · ${serverEdits.lastUpdatedBy}` : ""}</div>}
             </div>
-            <button className="btn btn-gold" onClick={handlePrint}>⎙ Print Program</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              {(releasings.filter(r => r?.name?.trim()).length > 0 || sustainings.filter(s => s?.name?.trim()).length > 0) && (
+                <button className="btn btn-outline" onClick={handlePrintForms}>⎙ Print Forms</button>
+              )}
+              <button className="btn btn-gold" onClick={handlePrintProgram}>⎙ Print Program</button>
+            </div>
           </div>
 
           <div className="scroll" style={{ flex: 1, padding: 24 }}>
@@ -538,90 +617,103 @@ export default function SacramentProgram({ api }) {
 
                 {/* Header */}
                 <div style={{ textAlign: "center", marginBottom: 20, paddingBottom: 14, borderBottom: "1px solid var(--border2)" }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: 24, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gold)" }}>Placid Rose Ward</div>
+                  <div style={{ fontFamily: "var(--font-display)", fontSize: 24, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--gold)" }}>{WARD}</div>
                   <div style={{ fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--text-muted)", marginTop: 2 }}>Sacrament Meeting</div>
                   <div style={{ fontFamily: "var(--font-display)", fontSize: 15, fontStyle: "italic", color: "var(--text)", marginTop: 6 }}>{formatDate(selected["__date"])}</div>
                 </div>
 
-                {/* Presiding & Conducting */}
                 <SectionHeading>Presiding &amp; Conducting</SectionHeading>
                 <ProgramLine label="Presiding" value={selected["Presiding"]} />
                 <ProgramLine label="Conducting" value={selected["Conducting"]} />
                 <Divider />
 
-                {/* Music */}
                 <SectionHeading>Music</SectionHeading>
                 <ProgramLine label="Organist" value={selected["Organ"]} />
                 <ProgramLine label="Choir Director" value={selected["Conducting Music"]} />
                 <Divider />
 
-                {/* Announcements — editable */}
                 <SectionHeading>Announcements</SectionHeading>
                 {announcements.map((a, i) => (
-                  <EditableLine key={i} placeholder="Announcement..." value={a}
-                    onChange={v => updateListItem("announcements", i, v)}
-                    onRemove={() => removeListItem("announcements", i)} />
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                    <input className="input" style={{ fontSize: 11, padding: "3px 8px", flex: 1 }} placeholder="Announcement..." value={a} onChange={e => updateListItem("announcements", i, e.target.value)} />
+                    <button onClick={() => removeListItem("announcements", i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>✕</button>
+                  </div>
                 ))}
                 <AddButton label="Add announcement" onClick={() => addListItem("announcements")} />
                 <Divider />
 
-                {/* Opening Hymn & Prayer */}
                 <SectionHeading>Opening</SectionHeading>
                 <ProgramLine label="Opening Hymn" value={hymnDisplay(selected["Opening Hymn"])} hymn />
                 <ProgramLine label="Opening Prayer" value={selected["Opening Prayer"]} />
                 <Divider />
 
-                {/* Ward Business — editable */}
                 <SectionHeading>Ward Business</SectionHeading>
                 {newMembers.map((m, i) => (
-                  <EditableLine key={i} label="New Member" placeholder="Name..." value={m}
-                    onChange={v => updateListItem("newMembers", i, v)}
-                    onRemove={() => removeListItem("newMembers", i)} indent />
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, minWidth: 80 }}>New Member</span>
+                    <input className="input" style={{ fontSize: 11, padding: "3px 8px", flex: 1 }} placeholder="Name..." value={m} onChange={e => updateListItem("newMembers", i, e.target.value)} />
+                    <button onClick={() => removeListItem("newMembers", i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>✕</button>
+                  </div>
                 ))}
                 <AddButton label="New member" onClick={() => addListItem("newMembers")} />
-                {releasings.map((r, i) => (
-                  <EditableLine key={i} label="Released" placeholder="Name & calling..." value={r}
-                    onChange={v => updateListItem("releasings", i, v)}
-                    onRemove={() => removeListItem("releasings", i)} indent />
-                ))}
-                <AddButton label="Releasing" onClick={() => addListItem("releasings")} />
-                {sustainings.map((s, i) => (
-                  <EditableLine key={i} label="Sustained" placeholder="Name & calling..." value={s}
-                    onChange={v => updateListItem("sustainings", i, v)}
-                    onRemove={() => removeListItem("sustainings", i)} indent />
-                ))}
-                <AddButton label="Sustaining" onClick={() => addListItem("sustainings")} />
-                <div style={{ marginTop: 6 }}>
-                  <EditableLine placeholder="Other business..." value={edits.otherBusiness || ""}
-                    onChange={v => setEdit("otherBusiness", v)} />
+
+                {/* Releasings */}
+                <div style={{ marginTop: 10 }}>
+                  {releasings.map((r, i) => (
+                    <RecordForm key={r.id || i} type="releasing" record={r}
+                      onChange={v => updateListItem("releasings", i, v)}
+                      onRemove={() => removeListItem("releasings", i)} />
+                  ))}
+                  <AddButton label="Add releasing" onClick={() => addListItem("releasings", blankReleasing())} />
+                </div>
+
+                {/* Sustainings */}
+                <div style={{ marginTop: 10 }}>
+                  {sustainings.map((s, i) => (
+                    <RecordForm key={s.id || i} type="sustaining" record={s}
+                      onChange={v => updateListItem("sustainings", i, v)}
+                      onRemove={() => removeListItem("sustainings", i)} />
+                  ))}
+                  <AddButton label="Add sustaining" onClick={() => addListItem("sustainings", blankSustaining())} />
+                </div>
+
+                <div style={{ marginTop: 8 }}>
+                  <input className="input" style={{ fontSize: 11, padding: "3px 8px" }} placeholder="Other business..." value={edits.otherBusiness || ""} onChange={e => setEdit("otherBusiness", e.target.value)} />
                 </div>
                 <Divider />
 
-                {/* Sacrament */}
                 <SectionHeading>Sacrament</SectionHeading>
                 <ProgramLine label="Sacrament Hymn" value={hymnDisplay(selected["Sacrament Hymn"])} hymn />
                 <Notice>Sacrament to be administered to the congregation by the Aaronic Priesthood</Notice>
                 <Notice>Invite congregation to reverence the sacrament and put away all distractions</Notice>
                 <Divider />
 
-                {/* Program */}
                 <SectionHeading>Program</SectionHeading>
                 {fast ? (
-                  <div style={{ fontStyle: "italic", color: "var(--gold)", fontSize: 13, padding: "8px 0" }}>
-                    Sharing of Testimonies
-                  </div>
+                  <div style={{ fontStyle: "italic", color: "var(--gold)", fontSize: 13, padding: "8px 0" }}>Sharing of Testimonies</div>
                 ) : (
                   <>
-                    {sp1 && <SpeakerBlock speaker={sp1} />}
-                    {sp2 && <SpeakerBlock speaker={sp2} />}
-                    {specialHymn && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 12, fontStyle: "italic", color: "var(--text)" }}>{specialHymn}</div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Musical Number / Intermediate Hymn</div>
-                      </div>
-                    )}
-                    {sp3 && <SpeakerBlock speaker={sp3} />}
-                    {sp4 && <SpeakerBlock speaker={sp4} />}
+                    {[sp1, sp2, null, sp3, sp4].reduce((acc, sp, rawIdx) => {
+                      if (rawIdx === 2) {
+                        // Special hymn slot
+                        if (specialHymn) acc.push(
+                          <div key="special" style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 12, fontStyle: "italic", color: "var(--text)" }}>{specialHymn}</div>
+                            <div style={{ fontSize: 10, color: "var(--text-muted)" }}>Musical Number / Intermediate Hymn</div>
+                          </div>
+                        );
+                      } else if (sp) {
+                        const speakerNum = [sp1, sp2, sp3, sp4].filter(Boolean).indexOf(sp);
+                        acc.push(
+                          <div key={rawIdx} style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--gold-dim)", marginBottom: 2 }}>{ordinals[speakerNum]} Speaker</div>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{sp.name}</div>
+                            {sp.topic && <div style={{ fontSize: 11, fontStyle: "italic", color: "var(--text-dim)", marginTop: 1 }}>{sp.topic}</div>}
+                          </div>
+                        );
+                      }
+                      return acc;
+                    }, [])}
                     {!sp1 && !sp2 && !sp3 && !sp4 && !specialHymn && (
                       <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>No speakers listed in spreadsheet</div>
                     )}
@@ -629,7 +721,6 @@ export default function SacramentProgram({ api }) {
                 )}
                 <Divider />
 
-                {/* Closing */}
                 <SectionHeading>Closing</SectionHeading>
                 <ProgramLine label="Closing Hymn" value={closingHymn} hymn />
                 <ProgramLine label="Closing Prayer" value={selected["Benediction"]} />
@@ -639,15 +730,6 @@ export default function SacramentProgram({ api }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function SpeakerBlock({ speaker }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{speaker.name}</div>
-      {speaker.topic && <div style={{ fontSize: 11, fontStyle: "italic", color: "var(--text-dim)", marginTop: 1 }}>{speaker.topic}</div>}
     </div>
   );
 }
