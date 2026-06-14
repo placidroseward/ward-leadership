@@ -253,6 +253,12 @@ export default function BishopricAgendaBuilder({ api, week }) {
     showToast("Added to Round Table"); load();
   };
 
+  const dismissInboxItem = async (item) => {
+    await fetch(`${api}/api/bishopric/inbox/${item.id}/dismiss`, { method: "POST" });
+    setInboxItems(prev => prev.filter(i => i.id !== item.id));
+    showToast("Item dismissed");
+  };
+
   return (
     <div className="split-layout" style={{ display: "flex", height: "100%", overflow: "hidden" }}>
       {toast && <div className="toast">{toast}</div>}
@@ -271,9 +277,15 @@ export default function BishopricAgendaBuilder({ api, week }) {
               <div key={item.id} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: 10, marginBottom: 6 }}>
                 <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 4, lineHeight: 1.5 }}>{item.body}</div>
                 <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>From: {item.fromName} · {new Date(item.receivedAt).toLocaleDateString()}</div>
-                <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--gold)" }} onClick={() => routeInboxItem(item)}>
-                  + Add to Round Table
-                </button>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--gold)" }} onClick={() => routeInboxItem(item)}>
+                    + Add to Round Table
+                  </button>
+                  <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--danger)" }} onClick={() => dismissInboxItem(item)}
+                    title="Dismiss — remove from inbox without adding to agenda">
+                    ✕ Dismiss
+                  </button>
+                </div>
               </div>
             ))}
           </div>

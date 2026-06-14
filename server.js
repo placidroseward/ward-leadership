@@ -908,6 +908,13 @@ app.get("/api/bishopric/inbox", (req, res) => {
   res.json(getAll("bishopricInbox").filter(i => !i.routed));
 });
 
+app.post("/api/bishopric/inbox/:id/dismiss", (req, res) => {
+  const item = getById("bishopricInbox", req.params.id);
+  if (!item) return res.status(404).json({ error: "Not found" });
+  update("bishopricInbox", item.id, { routed: true, routedTo: "dismissed", routedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
 app.post("/api/bishopric/inbox/:id/route", (req, res) => {
   const { target } = req.body;
   const item = getById("bishopricInbox", req.params.id);
