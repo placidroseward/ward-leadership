@@ -414,9 +414,9 @@ function RecordForm({ type, record, onChange, onRemove }) {
           <option value="Brother">Brother</option>
           <option value="Sister">Sister</option>
         </select>
-        <input className="input" style={{ fontSize: 11, padding: "3px 8px" }} placeholder="Full name..." value={record.name} onChange={e => f("name", e.target.value)} />
+        <textarea className="input" rows={1} style={{ fontSize: 11, padding: "3px 8px", resize: "vertical", minHeight: 32 }} placeholder="Full name..." value={record.name} onChange={e => f("name", e.target.value)} />
       </div>
-      <input className="input" style={{ fontSize: 11, padding: "3px 8px", marginBottom: 6 }} placeholder={isReleasing ? "Released as..." : "Called as..."} value={record.calling} onChange={e => f("calling", e.target.value)} />
+      <textarea className="input" rows={2} style={{ fontSize: 11, padding: "3px 8px", marginBottom: 6, resize: "vertical", minHeight: 38, width: "100%" }} placeholder={isReleasing ? "Released as..." : "Called as..."} value={record.calling} onChange={e => f("calling", e.target.value)} />
 
       <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic", marginBottom: 8, lineHeight: 1.5 }}>
         {isReleasing
@@ -705,7 +705,7 @@ export default function SacramentProgram({ api }) {
                 <SectionHeading>Announcements</SectionHeading>
                 {announcements.map((a, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-                    <input className="input" style={{ fontSize: 11, padding: "3px 8px", flex: 1 }} placeholder="Announcement..." value={a} onChange={e => updateListItem("announcements", i, e.target.value)} />
+                    <textarea className="input" rows={2} style={{ fontSize: 11, padding: "3px 8px", flex: 1, resize: "vertical", minHeight: 38 }} placeholder="Announcement..." value={a} onChange={e => updateListItem("announcements", i, e.target.value)} />
                     <button onClick={() => removeListItem("announcements", i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>✕</button>
                   </div>
                 ))}
@@ -721,7 +721,7 @@ export default function SacramentProgram({ api }) {
                 {newMembers.map((m, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
                     <span style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0, minWidth: 80 }}>New Member</span>
-                    <input className="input" style={{ fontSize: 11, padding: "3px 8px", flex: 1 }} placeholder="Name..." value={m} onChange={e => updateListItem("newMembers", i, e.target.value)} />
+                    <textarea className="input" rows={1} style={{ fontSize: 11, padding: "3px 8px", flex: 1, resize: "vertical", minHeight: 32 }} placeholder="Name..." value={m} onChange={e => updateListItem("newMembers", i, e.target.value)} />
                     <button onClick={() => removeListItem("newMembers", i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>✕</button>
                   </div>
                 ))}
@@ -748,7 +748,7 @@ export default function SacramentProgram({ api }) {
                 </div>
 
                 <div style={{ marginTop: 8 }}>
-                  <input className="input" style={{ fontSize: 11, padding: "3px 8px" }} placeholder="Other business..." value={edits.otherBusiness || ""} onChange={e => setEdit("otherBusiness", e.target.value)} />
+                  <textarea className="input" rows={2} style={{ fontSize: 11, padding: "3px 8px", width: "100%", resize: "vertical", minHeight: 38 }} placeholder="Other business..." value={edits.otherBusiness || ""} onChange={e => setEdit("otherBusiness", e.target.value)} />
                 </div>
                 <Divider />
 
