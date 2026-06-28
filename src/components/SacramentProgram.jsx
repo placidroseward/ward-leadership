@@ -85,11 +85,25 @@ function parseNameTopic(val) {
 }
 
 function toSundayKey(dateStr) {
-  const d = parseMeetingDate(dateStr);
-  if (!d) return null;
-  // Use local date components to avoid UTC conversion shifting the date
+  if (!dateStr) return null;
   const pad = n => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+  // Try our custom parser first (handles "14-Jun" format)
+  const d1 = parseMeetingDate(dateStr);
+  if (d1) {
+    return `${d1.getFullYear()}-${pad(d1.getMonth()+1)}-${pad(d1.getDate())}`;
+  }
+
+  // Fall back to native Date parsing (handles ISO, MM/DD/YYYY, etc.)
+  const d2 = new Date(dateStr);
+  if (!isNaN(d2.getTime())) {
+    return `${d2.getFullYear()}-${pad(d2.getMonth()+1)}-${pad(d2.getDate())}`;
+  }
+
+  // Last resort: if it's already YYYY-MM-DD just return it
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+
+  return null;
 }
 
 // ─── Default blank releasing / sustaining records ────────────────────────────
@@ -501,7 +515,8 @@ export default function SacramentProgram({ api }) {
 
   const handleSave = async () => {
     const sundayKey = toSundayKey(selectedDate);
-    if (!api || !sundayKey) { setSaveStatus("error"); setSaveError("Could not determine date key"); return; }
+    console.log("[SAVE] selectedDate:", selectedDate, "→ sundayKey:", sundayKey);
+    if (!api || !sundayKey) { setSaveStatus("error"); setSaveError(`Could not determine date key from: "${selectedDate}"`); return; }
     setSaveStatus("saving"); setSaveError(null);
     // Strip internal merge fields before sending
     const { _fromServer, _lastUpdatedBy, _lastUpdated, ...payload } = edits;
