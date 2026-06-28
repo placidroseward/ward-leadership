@@ -39,7 +39,9 @@ function parseCSVLine(line) {
 
 function parseMeetingDate(str) {
   if (!str) return null;
-  const parts = str.split("-");
+  // Strip all whitespace including non-breaking spaces and invisible chars
+  const clean = str.replace(/[\s\u00a0\u200b\u200c\u200d\ufeff]+/g, "").trim();
+  const parts = clean.split("-");
   if (parts.length < 2) return null;
   const day = parseInt(parts[0], 10);
   const months = { Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11 };
@@ -94,13 +96,17 @@ function toSundayKey(dateStr) {
     return `${d1.getFullYear()}-${pad(d1.getMonth()+1)}-${pad(d1.getDate())}`;
   }
 
-  // Fall back to native Date parsing (handles ISO, MM/DD/YYYY, etc.)
+  // Log char codes to help diagnose invisible character issues
+  console.warn("[toSundayKey] parseMeetingDate failed for:", JSON.stringify(dateStr),
+    "chars:", [...dateStr].map(c => c.charCodeAt(0)));
+
+  // Fall back to native Date parsing
   const d2 = new Date(dateStr);
   if (!isNaN(d2.getTime())) {
     return `${d2.getFullYear()}-${pad(d2.getMonth()+1)}-${pad(d2.getDate())}`;
   }
 
-  // Last resort: if it's already YYYY-MM-DD just return it
+  // Last resort: already YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
 
   return null;
