@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 
 import { getAll, insert, update, remove, getById, getWeekKey } from "./src/lib/storage.js";
 import { sendPulse, sendBishopricPulse, sendToWardCouncil, sendToBishopric, parsePulseResponse, matchMember } from "./groupme.js";
-import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda, routeSMS, parseSacramentEdit } from "./src/lib/claude.js";
+import { generateAgenda, suggestGoals, suggestMissionActions, generateBishopricAgenda, routeSMS, parseSacramentEdit, summarizeInboxItem } from "./src/lib/claude.js";
 import { ALL_MEMBERS, ORG_CATALOG } from "./src/data/council.js";
 
 // Resolve an orgKey to its canonical { orgKey, org, orgColor } tuple.
@@ -797,14 +797,14 @@ ${latestPage.content}`.slice(0, 3000);
       const existingItems = agenda.items || [];
       const maxOrder = Math.max(0, ...existingItems.map(i => i.order));
       const closingIdx = existingItems.findIndex(i => i.type === "closing");
-      const injected = routedItems.map((r, idx) => ({
+      const injected = await Promise.all(routedItems.map(async (r, idx) => ({
         order: maxOrder + idx + 1,
-        title: r.body.slice(0, 60),
+        title: r.summary || await summarizeInboxItem({ body: r.body, fromName: r.fromName }),
         duration: 5, type: "discussion",
         owner: r.fromName,
         notes: r.body,
         fromText: true, collaborationFlag: false,
-      }));
+      })));
       // Insert before closing prayer if it exists, otherwise append
       if (closingIdx !== -1) {
         existingItems.splice(closingIdx, 0, ...injected);
@@ -1055,14 +1055,20 @@ app.post("/api/bishopric/inbox/:id/dismiss", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/bishopric/inbox/:id/route", (req, res) => {
+app.post("/api/bishopric/inbox/:id/route", async (req, res) => {
   const { target } = req.body;
   const item = getById("bishopricInbox", req.params.id);
   if (!item) return res.status(404).json({ error: "Not found" });
   update("bishopricInbox", item.id, { routed: true, routedTo: target, routedAt: new Date().toISOString() });
 
+  let summary = null;
   if (target === "bishopric") {
     const week = item.targetWeek || getWeekKey();
+
+    // Interpret/condense the raw GroupMe message into a single agenda-ready
+    // line. This is what shows up as the round-table item title and, in
+    // turn, as the one-liner in the weekly outbound Bishopric message.
+    summary = await summarizeInboxItem({ body: item.body, fromName: item.fromName });
 
     // Always persist as a round-table item for this week so the agenda
     // generator picks it up even if no agenda exists yet.
@@ -1070,6 +1076,7 @@ app.post("/api/bishopric/inbox/:id/route", (req, res) => {
       id: randomUUID(),
       week,
       body: item.body,
+      summary,
       fromName: item.fromName,
       routedAt: new Date().toISOString(),
     });
@@ -1080,7 +1087,7 @@ app.post("/api/bishopric/inbox/:id/route", (req, res) => {
       const agenda = agendas[0];
       const maxOrder = Math.max(0, ...(agenda.items || []).map(i => i.order));
       const items = [...(agenda.items || []), {
-        order: maxOrder + 1, title: item.body.slice(0, 60),
+        order: maxOrder + 1, title: summary,
         duration: 5, type: "discussion", owner: item.fromName,
         notes: item.body, fromText: true, collaborationFlag: false,
       }];
@@ -1096,7 +1103,7 @@ app.post("/api/bishopric/inbox/:id/route", (req, res) => {
       update("agendas", agenda.id, { items });
     }
   }
-  res.json({ ok: true });
+  res.json({ ok: true, summary });
 });
 
 // ─── SACRAMENT PROGRAM EDITS API ──────────────────────────────────────────────

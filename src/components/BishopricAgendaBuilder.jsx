@@ -265,11 +265,16 @@ export default function BishopricAgendaBuilder({ api, week }) {
   };
 
   const routeInboxItem = async (item) => {
-    await fetch(`${api}/api/bishopric/inbox/${item.id}/route`, {
+    const res = await fetch(`${api}/api/bishopric/inbox/${item.id}/route`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target: "bishopric" }),
     });
-    setRoundTableItems(prev => [...prev, { id: Date.now().toString(), title: item.body, raisedBy: item.fromName, category: "ward-matter", notes: "" }]);
+    let summary = item.body;
+    try {
+      const data = await res.json();
+      if (data?.summary) summary = data.summary;
+    } catch { /* fall back to raw text */ }
+    setRoundTableItems(prev => [...prev, { id: Date.now().toString(), title: summary, raisedBy: item.fromName, category: "ward-matter", notes: item.body }]);
     showToast("Added to Round Table"); load();
   };
 

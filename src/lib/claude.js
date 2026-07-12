@@ -171,6 +171,32 @@ export async function summarizeMemberResponse(raw) {
   return response.content[0]?.text || raw;
 }
 
+// Interprets a raw Bishopric GroupMe message and condenses it into a single
+// agenda-ready line (title-cased, no quotes, action-oriented where possible).
+// Falls back to a plain truncation if the API call fails so the round-table
+// item still gets a title.
+export async function summarizeInboxItem({ body, fromName }) {
+  const fallback = body.length > 60 ? `${body.slice(0, 57)}...` : body;
+  try {
+    const response = await getClient().messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 60,
+      messages: [{
+        role: "user",
+        content: `You are helping an Executive Secretary prepare a Bishopric Meeting agenda. A bishopric member sent a GroupMe message that needs to become one short agenda line.
+
+Message from ${fromName}: "${body}"
+
+Write ONE line (under 12 words) that captures what this item is about, suitable for a printed/texted agenda. No quotes, no trailing period, no preamble — just the line itself.`,
+      }],
+    });
+    const text = (response.content[0]?.text || "").trim().replace(/^["']|["']$/g, "");
+    return text || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function suggestMissionActions({ type, id, plan, pulseResponses = [], goals = [] }) {
   // Find the item being asked about
   let item = null;

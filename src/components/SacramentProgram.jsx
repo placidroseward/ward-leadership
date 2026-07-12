@@ -164,6 +164,9 @@ const PRINT_CSS = `
   .line-value { text-align: right; flex: 1; font-size: 14pt; }
   .line-value.hymn { font-style: italic; }
   .line-only { font-size: 14pt; margin-bottom: 4pt; }
+  .announcement-list { margin: 0; padding-left: 16pt; list-style: none; }
+  .announcement-list li { font-size: 14pt; margin-bottom: 6pt; position: relative; padding-left: 4pt; }
+  .announcement-list li::before { content: "•"; position: absolute; left: -13pt; color: #8B6914; }
   .notice { font-style: italic; color: #6B6760; font-size: 13pt; margin-bottom: 4pt; padding-left: 4pt; }
   .new-member-intro { font-size: 13pt; font-style: italic; color: #4a4540; margin-bottom: 6pt; line-height: 1.5; }
   .new-member-outro { font-size: 13pt; font-style: italic; color: #4a4540; margin-top: 6pt; line-height: 1.5; }
@@ -252,7 +255,7 @@ function buildPrintHTML(row, edits) {
 
   if (announcements.length) {
     body += sectionTitle("Announcements");
-    announcements.forEach(a => { body += lineOnly(a); });
+    body += `<ul class="announcement-list">${announcements.map(a => `<li>${a}</li>`).join("")}</ul>`;
     body += hr();
   }
 
@@ -509,7 +512,7 @@ export default function SacramentProgram({ api }) {
     setEdits(next);
     saveEdits(selectedDate, next);
     const sundayKey = toSundayKey(selectedDate);
-    if (api && sundayKey) {
+    if (api != null && sundayKey) {
       fetch(`${api}/api/sacrament/edits/${sundayKey}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(next),
@@ -522,7 +525,7 @@ export default function SacramentProgram({ api }) {
   const handleSave = async () => {
     const sundayKey = toSundayKey(selectedDate);
     console.log("[SAVE] selectedDate:", selectedDate, "→ sundayKey:", sundayKey);
-    if (!api || !sundayKey) { setSaveStatus("error"); setSaveError(`Could not determine date key from: "${selectedDate}"`); return; }
+    if (api == null || !sundayKey) { setSaveStatus("error"); setSaveError(`Could not determine date key from: "${selectedDate}"`); return; }
     setSaveStatus("saving"); setSaveError(null);
     // Strip internal merge fields before sending
     const { _fromServer, _lastUpdatedBy, _lastUpdated, ...payload } = edits;
