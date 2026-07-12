@@ -498,7 +498,7 @@ export default function SacramentProgram({ api }) {
     const local = loadEdits(selectedDate);
     setEdits(local);
     const sundayKey = toSundayKey(selectedDate);
-    if (api && sundayKey) {
+    if (api != null && sundayKey) {
       fetch(`${api}/api/sacrament/edits/${sundayKey}`)
         .then(r => r.json())
         .then(data => { setServerEdits(data); if (data) setEdits(mergeEdits(local, data)); })
