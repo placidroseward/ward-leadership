@@ -132,15 +132,27 @@ function saveEdits(dateKey, edits) {
   try { localStorage.setItem(`sp_edits_${dateKey}`, JSON.stringify(edits)); } catch (e) {}
 }
 
+// ─── Ward Business normalization ─────────────────────────────────────────────
+// otherBusiness used to be stored as a single string; it's now a list of
+// items so multiple pieces of business can be added. This coerces either
+// legacy string data or the new array shape into a clean array.
+function toBusinessArray(v) {
+  if (Array.isArray(v)) return v.filter(x => typeof x === "string" && x.trim());
+  if (typeof v === "string" && v.trim()) return [v];
+  return [];
+}
+
 // ─── Merge server + localStorage ─────────────────────────────────────────────
 function mergeEdits(local, server) {
   if (!server) return local;
+  const serverOther = toBusinessArray(server.otherBusiness);
+  const localOther = toBusinessArray(local.otherBusiness);
   return {
     announcements: server.announcements?.length ? server.announcements : (local.announcements || []),
     newMembers:    server.newMembers?.length    ? server.newMembers    : (local.newMembers || []),
     releasings:    server.releasings?.length    ? server.releasings    : (local.releasings || []),
     sustainings:   server.sustainings?.length   ? server.sustainings   : (local.sustainings || []),
-    otherBusiness: server.otherBusiness         ? server.otherBusiness : (local.otherBusiness || ""),
+    otherBusiness: serverOther.length ? serverOther : localOther,
     _fromServer: true,
     _lastUpdatedBy: server.lastUpdatedBy || null,
     _lastUpdated: server.lastUpdated || null,
@@ -224,8 +236,8 @@ function buildPrintHTML(row, edits) {
   const newMembers = (edits.newMembers || []).filter(a => a?.trim());
   const releasings = (edits.releasings || []).filter(r => r?.name?.trim());
   const sustainings = (edits.sustainings || []).filter(s => s?.name?.trim());
-  const otherBusiness = (edits.otherBusiness || "").trim();
-  const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || otherBusiness;
+  const otherBusiness = toBusinessArray(edits.otherBusiness);
+  const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || otherBusiness.length;
 
   const line = (label, value, hymn) =>
     value ? `<div class="line"><span class="line-label">${label}</span><span class="line-value${hymn ? " hymn" : ""}">${value}</span></div>` : "";
@@ -277,7 +289,7 @@ function buildPrintHTML(row, edits) {
     if (sustainings.length) {
       body += `<div class="paperwork-ref">Sustainings — see accompanying paperwork</div>`;
     }
-    if (otherBusiness) body += lineOnly(otherBusiness);
+    if (otherBusiness.length) otherBusiness.forEach(item => { body += lineOnly(item); });
     body += hr();
   }
 
@@ -567,7 +579,8 @@ export default function SacramentProgram({ api }) {
   const newMembers = edits.newMembers || [];
   const releasings = edits.releasings || [];
   const sustainings = edits.sustainings || [];
-  const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || (edits.otherBusiness || "").trim();
+  const otherBusiness = toBusinessArray(edits.otherBusiness);
+  const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || otherBusiness.length;
 
   const handlePrintProgram = () => {
     if (!selected) return;
@@ -590,7 +603,17 @@ export default function SacramentProgram({ api }) {
   const [drawerOpen, setDrawerOpen] = useState(true);
   const touchStartX = useRef(null);
 
-  const handleTouchStart = (e) => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchStart = (e) => {
+    // Ignore swipes that start inside a form field — otherwise selecting
+    // text, scrolling a textarea, or the pan-around that follows iOS's
+    // zoom-on-focus can register as a swipe and pop the drawer back open
+    // over the field you're trying to use.
+    if (e.target.closest("input, textarea, select, button")) {
+      touchStartX.current = null;
+      return;
+    }
+    touchStartX.current = e.touches[0].clientX;
+  };
   const handleTouchEnd = (e) => {
     if (touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
@@ -772,7 +795,13 @@ export default function SacramentProgram({ api }) {
                 </div>
 
                 <div style={{ marginTop: 8 }}>
-                  <textarea className="input" rows={2} style={{ fontSize: 11, padding: "3px 8px", width: "100%", resize: "vertical", minHeight: 38 }} placeholder="Other business..." value={edits.otherBusiness || ""} onChange={e => setEdit("otherBusiness", e.target.value)} />
+                  {otherBusiness.map((item, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
+                      <textarea className="input" rows={2} style={{ fontSize: 11, padding: "3px 8px", flex: 1, resize: "vertical", minHeight: 38 }} placeholder="Other business..." value={item} onChange={e => updateListItem("otherBusiness", i, e.target.value)} />
+                      <button onClick={() => removeListItem("otherBusiness", i)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", fontSize: 12 }}>✕</button>
+                    </div>
+                  ))}
+                  <AddButton label="Add other business" onClick={() => addListItem("otherBusiness")} />
                 </div>
                 <Divider />
 

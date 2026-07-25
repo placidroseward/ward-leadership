@@ -419,7 +419,7 @@ Extract any program changes from this message. You may ONLY update these fields:
 - newMembers: array of new member names to add (or empty array)
 - releasings: array of "Name — Calling" strings to add (or empty array)
 - sustainings: array of "Name — Calling" strings to add (or empty array)
-- otherBusiness: a single string for other ward business (or null)
+- otherBusiness: array of other ward business item strings to add (or empty array)
 - conducting: name of who is conducting (or null — only if explicitly changed)
 
 Do NOT extract anything about music, hymns, organist, opening prayer, sacrament, closing prayer, or speakers. Those are read-only.
@@ -431,7 +431,7 @@ Return only valid JSON:
   "newMembers": [],
   "releasings": [],
   "sustainings": [],
-  "otherBusiness": null,
+  "otherBusiness": [],
   "conducting": null
 }`;
 
@@ -446,6 +446,6 @@ Return only valid JSON:
   try {
     return JSON.parse(clean);
   } catch {
-    return { announcements: [], removeAnnouncements: [], newMembers: [], releasings: [], sustainings: [], otherBusiness: null, conducting: null };
+    return { announcements: [], removeAnnouncements: [], newMembers: [], releasings: [], sustainings: [], otherBusiness: [], conducting: null };
   }
 }

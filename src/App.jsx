@@ -525,6 +525,14 @@ function getStyles(lm) {
     /* ── MOBILE STYLES (≤768px) ─────────────────────────────────────────── */
     @media (max-width: 768px) {
 
+      /* Prevent iOS Safari from auto-zooming the page when a form field is
+         focused — it only zooms if the field's font-size is under 16px, and
+         several fields in the app use smaller sizes for density. Forcing
+         16px here (visually only on mobile) avoids the zoom entirely, which
+         also avoids the awkward pan-around-to-see-the-field behavior that
+         follows it. */
+      input.input, textarea.input, select.input { font-size: 16px !important; }
+
       /* Hamburger shows, desktop nav hides */
       .hamburger-btn { display: inline-flex !important; }
       .nav { display: none !important; }

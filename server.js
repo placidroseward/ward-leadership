@@ -443,7 +443,7 @@ app.post("/webhook/groupme/bishopric", async (req, res) => {
       const sundayKey = nextSunday.toISOString().slice(0, 10);
 
       // Load existing edits for this Sunday and merge
-      const existing = getAll("sacramentEdits").find(e => e.sundayKey === sundayKey) || { sundayKey, announcements: [], newMembers: [], releasings: [], sustainings: [], otherBusiness: "", conducting: "" };
+      const existing = getAll("sacramentEdits").find(e => e.sundayKey === sundayKey) || { sundayKey, announcements: [], newMembers: [], releasings: [], sustainings: [], otherBusiness: [], conducting: "" };
       const merged = {
         ...existing,
         announcements: [
@@ -453,7 +453,10 @@ app.post("/webhook/groupme/bishopric", async (req, res) => {
         newMembers: [...new Set([...(existing.newMembers || []), ...(edits.newMembers || [])])],
         releasings: [...new Set([...(existing.releasings || []), ...(edits.releasings || [])])],
         sustainings: [...new Set([...(existing.sustainings || []), ...(edits.sustainings || [])])],
-        otherBusiness: edits.otherBusiness ?? existing.otherBusiness ?? "",
+        otherBusiness: [
+          ...toBusinessArray(existing.otherBusiness),
+          ...toBusinessArray(edits.otherBusiness),
+        ],
         conducting: edits.conducting ?? existing.conducting ?? "",
         lastUpdated: new Date().toISOString(),
         lastUpdatedBy: member?.name || name,
@@ -962,6 +965,14 @@ app.get("/api/wardcouncil/onenote/latest", (req, res) => {
 // ─── HTML → PLAIN TEXT HELPER ─────────────────────────────────────────────────
 // Converts OneNote HTML to readable plain text, preserving paragraph/list
 // structure as newlines and decoding common HTML entities.
+// Ward Business ("otherBusiness") used to be stored as a single string; it's
+// now a list so multiple items can be tracked. Coerces either shape to an array.
+function toBusinessArray(v) {
+  if (Array.isArray(v)) return v.filter(x => typeof x === "string" && x.trim());
+  if (typeof v === "string" && v.trim()) return [v];
+  return [];
+}
+
 function htmlToPlainText(html) {
   return (html || "")
     // Block-level tags → newline before stripping
@@ -1139,7 +1150,7 @@ app.put("/api/sacrament/edits/:sundayKey", (req, res) => {
       newMembers: Array.isArray(body.newMembers) ? body.newMembers.filter(a => typeof a === "string") : [],
       releasings: Array.isArray(body.releasings) ? body.releasings.map(r => typeof r === "object" ? r : {}) : [],
       sustainings: Array.isArray(body.sustainings) ? body.sustainings.map(s => typeof s === "object" ? s : {}) : [],
-      otherBusiness: typeof body.otherBusiness === "string" ? body.otherBusiness : "",
+      otherBusiness: toBusinessArray(body.otherBusiness),
       conducting: typeof body.conducting === "string" ? body.conducting : "",
       lastUpdated: new Date().toISOString(),
     };
