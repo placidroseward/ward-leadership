@@ -275,9 +275,14 @@ export default function BishopricAgendaBuilder({ api, week }) {
   };
 
   const routeInboxItem = async (item) => {
-    if (!selected) {
-      showToast("Create an agenda first before adding items to it.");
-      return;
+    let target = selected;
+    if (!target) {
+      target = agendas.find(a => a.status === "draft");
+      if (!target) {
+        showToast("Create an agenda first before adding items to it.");
+        return;
+      }
+      setSelected(target); // open the existing draft so the item has somewhere to land
     }
     const res = await fetch(`${api}/api/bishopric/inbox/${item.id}/route`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -332,8 +337,8 @@ export default function BishopricAgendaBuilder({ api, week }) {
                 <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>From: {item.fromName} · {new Date(item.receivedAt).toLocaleDateString()}</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--gold)" }} onClick={() => routeInboxItem(item)}
-                    disabled={!selected}
-                    title={!selected ? "Create an agenda first before adding items to it" : ""}>
+                    disabled={!selected && !agendas.some(a => a.status === "draft")}
+                    title={(!selected && !agendas.some(a => a.status === "draft")) ? "Create an agenda first before adding items to it" : ""}>
                     + Add to Round Table
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--danger)" }} onClick={() => dismissInboxItem(item)}
