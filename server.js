@@ -549,6 +549,10 @@ app.get("/api/agendas", (req, res) => {
 });
 
 app.post("/api/agendas/generate", async (req, res) => {
+  const existingDraft = getAll("agendas").find(a => a.status === "draft");
+  if (existingDraft) {
+    return res.status(409).json({ error: "A draft agenda already exists. Send or delete it before creating a new one." });
+  }
   const week = req.body.week || getWeekKey();
   const pulseResponses = getAll("pulseResponses").filter((r) => r.week === week);
   const goals = getAll("goals");
@@ -741,6 +745,10 @@ app.get("/api/bishopric/agendas", (req, res) => {
 });
 
 app.post("/api/bishopric/agendas/create", (req, res) => {
+  const existingDraft = getAll("bishopricAgendas").find(a => a.status === "draft");
+  if (existingDraft) {
+    return res.status(409).json({ error: "A draft agenda already exists. Send or delete it before creating a new one." });
+  }
   const { week, title, status, agendaData } = req.body;
   const saved = insert("bishopricAgendas", {
     id: randomUUID(),
@@ -754,6 +762,10 @@ app.post("/api/bishopric/agendas/create", (req, res) => {
 });
 
 app.post("/api/bishopric/agendas/generate", async (req, res) => {
+  const existingDraft = getAll("bishopricAgendas").find(a => a.status === "draft");
+  if (existingDraft) {
+    return res.status(409).json({ error: "A draft agenda already exists. Send or delete it before creating a new one." });
+  }
   const week = req.body.week || getWeekKey();
   const bishopricMembers = getBishopricMembers();
   const pulseResponses = getAll("bishopricPulse").filter(r => r.week === week);

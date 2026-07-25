@@ -174,6 +174,11 @@ export default function BishopricAgendaBuilder({ api, week }) {
   };
 
   const createNew = async () => {
+    if (agendas.some(a => a.status === "draft")) {
+      showToast("An agenda already exists. Send or delete the current draft before creating a new one.");
+      return;
+    }
+
     // Fetch prayer pool (Bishopric + Ward Clerk + Executive Secretary) for random assignments
     let randomAssignments = { openingPrayer: "", spiritualThought: "", closingPrayer: "" };
     try {
@@ -213,6 +218,11 @@ export default function BishopricAgendaBuilder({ api, week }) {
         body: JSON.stringify(newAgenda),
       });
       const created = await res.json();
+      if (!res.ok || created.error) {
+        showToast(created.error || "An agenda already exists.");
+        load();
+        return;
+      }
       load(); setSelected(created);
       setOpeningPrayer(randomAssignments.openingPrayer);
       setSpiritualThought(randomAssignments.spiritualThought);
@@ -265,6 +275,10 @@ export default function BishopricAgendaBuilder({ api, week }) {
   };
 
   const routeInboxItem = async (item) => {
+    if (!selected) {
+      showToast("Create an agenda first before adding items to it.");
+      return;
+    }
     const res = await fetch(`${api}/api/bishopric/inbox/${item.id}/route`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target: "bishopric" }),
@@ -303,7 +317,9 @@ export default function BishopricAgendaBuilder({ api, week }) {
 
       {/* Left sidebar */}
       <div className={`scroll sidebar-drawer${selected ? " sidebar-drawer-hidden" : ""}`} style={{ width: 260, borderRight: "1px solid var(--border)", padding: 16, flexShrink: 0, background: "var(--surface)" }}>
-        <button className="btn btn-gold" style={{ width: "100%", marginBottom: 16 }} onClick={createNew}>
+        <button className="btn btn-gold" style={{ width: "100%", marginBottom: 16 }} onClick={createNew}
+          disabled={agendas.some(a => a.status === "draft")}
+          title={agendas.some(a => a.status === "draft") ? "A draft agenda already exists — send or delete it before creating a new one" : ""}>
           + New Agenda
         </button>
 
@@ -315,7 +331,9 @@ export default function BishopricAgendaBuilder({ api, week }) {
                 <div style={{ fontSize: 11, color: "var(--text)", marginBottom: 4, lineHeight: 1.5 }}>{item.body}</div>
                 <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 6 }}>From: {item.fromName} · {new Date(item.receivedAt).toLocaleDateString()}</div>
                 <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--gold)" }} onClick={() => routeInboxItem(item)}>
+                  <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--gold)" }} onClick={() => routeInboxItem(item)}
+                    disabled={!selected}
+                    title={!selected ? "Create an agenda first before adding items to it" : ""}>
                     + Add to Round Table
                   </button>
                   <button className="btn btn-ghost" style={{ fontSize: 9, padding: "2px 6px", color: "var(--danger)" }} onClick={() => dismissInboxItem(item)}

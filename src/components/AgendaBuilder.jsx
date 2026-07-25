@@ -143,6 +143,10 @@ export default function AgendaBuilder({ api, week }) {
   };
 
   const generate = async () => {
+    if (agendas.some(a => a.status === "draft")) {
+      showToast("An agenda already exists. Send or delete the current draft before creating a new one.");
+      return;
+    }
     setGenerating(true);
     try {
       const res = await fetch(`${api}/api/agendas/generate`, {
@@ -214,7 +218,9 @@ export default function AgendaBuilder({ api, week }) {
       {/* Left: Agenda list */}
       <div className="scroll" style={{ width: 280, borderRight: "1px solid var(--border)", padding: 16, flexShrink: 0, background: "var(--surface)" }}>
         <div style={{ marginBottom: 12 }}>
-          <button className="btn btn-gold" style={{ width: "100%" }} onClick={generate} disabled={generating}>
+          <button className="btn btn-gold" style={{ width: "100%" }} onClick={generate}
+            disabled={generating || agendas.some(a => a.status === "draft")}
+            title={agendas.some(a => a.status === "draft") ? "A draft agenda already exists — send or delete it before creating a new one" : ""}>
             {generating ? <><span className="spinner" /> Generating...</> : "✦ Generate Agenda"}
           </button>
         </div>
