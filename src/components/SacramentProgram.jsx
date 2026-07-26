@@ -137,7 +137,7 @@ function saveEdits(dateKey, edits) {
 // items so multiple pieces of business can be added. This coerces either
 // legacy string data or the new array shape into a clean array.
 function toBusinessArray(v) {
-  if (Array.isArray(v)) return v.filter(x => typeof x === "string" && x.trim());
+  if (Array.isArray(v)) return v.filter(x => typeof x === "string");
   if (typeof v === "string" && v.trim()) return [v];
   return [];
 }
@@ -236,7 +236,7 @@ function buildPrintHTML(row, edits) {
   const newMembers = (edits.newMembers || []).filter(a => a?.trim());
   const releasings = (edits.releasings || []).filter(r => r?.name?.trim());
   const sustainings = (edits.sustainings || []).filter(s => s?.name?.trim());
-  const otherBusiness = toBusinessArray(edits.otherBusiness);
+  const otherBusiness = toBusinessArray(edits.otherBusiness).filter(item => item?.trim());
   const hasWardBusiness = newMembers.length || releasings.length || sustainings.length || otherBusiness.length;
 
   const line = (label, value, hymn) =>

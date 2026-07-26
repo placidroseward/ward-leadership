@@ -968,7 +968,7 @@ app.get("/api/wardcouncil/onenote/latest", (req, res) => {
 // Ward Business ("otherBusiness") used to be stored as a single string; it's
 // now a list so multiple items can be tracked. Coerces either shape to an array.
 function toBusinessArray(v) {
-  if (Array.isArray(v)) return v.filter(x => typeof x === "string" && x.trim());
+  if (Array.isArray(v)) return v.filter(x => typeof x === "string");
   if (typeof v === "string" && v.trim()) return [v];
   return [];
 }
